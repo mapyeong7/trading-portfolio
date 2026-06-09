@@ -1058,6 +1058,15 @@ export default function AdminApp() {
                       ))}
                     </select>
                   </label>
+                  <ParticipantPicker
+                    participants={participants.filter((participant) => participant.active)}
+                    value={entryDraft.participantId}
+                    query={entryParticipantQuery}
+                    onQueryChange={setEntryParticipantQuery}
+                    onChange={(participantId) => setEntryDraft({ ...entryDraft, participantId })}
+                  />
+                </div>
+                <div className="entry-identity-column">
                   <label>
                     종목명
                     <input
@@ -1101,67 +1110,60 @@ export default function AdminApp() {
                       </div>
                     ) : null}
                   </div>
-                </div>
-                <ParticipantPicker
-                  participants={participants.filter((participant) => participant.active)}
-                  value={entryDraft.participantId}
-                  query={entryParticipantQuery}
-                  onQueryChange={setEntryParticipantQuery}
-                  onChange={(participantId) => setEntryDraft({ ...entryDraft, participantId })}
-                />
-                <div className="stock-code-block">
-                  <label>
-                    종목코드
-                    <input
-                      value={entryDraft.stockCode}
-                      disabled={entryDraft.stockCodeUnavailable}
-                      placeholder={entryDraft.stockCodeUnavailable ? "코드 없음" : "005930, AAPL, SPY 등"}
-                      onChange={(event) => {
-                        setEntryDraft({ ...entryDraft, stockCode: event.target.value });
-                        setQuoteCheck(null);
-                        setHistoricalCloseCheck(null);
-                      }}
-                    />
-                  </label>
-                  <div className="stock-code-actions">
-                    <label className="checkbox-label">
+                  <div className="stock-code-block">
+                    <label>
+                      종목코드
                       <input
-                        type="checkbox"
-                        checked={entryDraft.stockCodeUnavailable}
+                        value={entryDraft.stockCode}
+                        disabled={entryDraft.stockCodeUnavailable}
+                        placeholder={entryDraft.stockCodeUnavailable ? "코드 없음" : "005930, AAPL, SPY 등"}
                         onChange={(event) => {
-                          setEntryDraft({
-                            ...entryDraft,
-                            stockCode: event.target.checked ? "" : entryDraft.stockCode,
-                            stockCodeUnavailable: event.target.checked
-                          });
+                          setEntryDraft({ ...entryDraft, stockCode: event.target.value });
                           setQuoteCheck(null);
                           setHistoricalCloseCheck(null);
                         }}
                       />
-                      종목코드 없음
                     </label>
-                    <button
-                      className="small-button"
-                      type="button"
-                      onClick={() => void handleQuoteCheck()}
-                      disabled={quoteChecking}
-                    >
-                      {quoteChecking ? "확인 중" : "코드 확인"}
-                    </button>
+                    <div className="stock-code-actions">
+                      <label className="checkbox-label">
+                        <input
+                          type="checkbox"
+                          checked={entryDraft.stockCodeUnavailable}
+                          onChange={(event) => {
+                            setEntryDraft({
+                              ...entryDraft,
+                              stockCode: event.target.checked ? "" : entryDraft.stockCode,
+                              stockCodeUnavailable: event.target.checked
+                            });
+                            setQuoteCheck(null);
+                            setHistoricalCloseCheck(null);
+                          }}
+                        />
+                        종목코드 없음
+                      </label>
+                      <button
+                        className="small-button"
+                        type="button"
+                        onClick={() => void handleQuoteCheck()}
+                        disabled={quoteChecking}
+                      >
+                        {quoteChecking ? "확인 중" : "코드 확인"}
+                      </button>
+                    </div>
+                    {quoteCheck ? (
+                      <p className={`quote-check-message ${quoteCheck.ok ? "success-text" : "error-text"}`}>
+                        {quoteCheck.ok
+                          ? `${quoteCheck.symbol ?? quoteCheck.stockCode} · ${formatMoney(quoteCheck.price)} · ${
+                              quoteCheck.source ?? "시세 확인"
+                            }`
+                          : quoteCheck.error === "종목코드 없음"
+                            ? "종목코드 없음: 자동 시세 수집에서 제외됩니다."
+                            : `조회 실패: ${quoteCheck.error}`}
+                      </p>
+                    ) : (
+                      <p className="quote-check-message muted">저장 전에 현재가 조회 가능 여부를 확인할 수 있습니다.</p>
+                    )}
                   </div>
-                  {quoteCheck ? (
-                    <p className={`quote-check-message ${quoteCheck.ok ? "success-text" : "error-text"}`}>
-                      {quoteCheck.ok
-                        ? `${quoteCheck.symbol ?? quoteCheck.stockCode} · ${formatMoney(quoteCheck.price)} · ${
-                            quoteCheck.source ?? "시세 확인"
-                          }`
-                        : quoteCheck.error === "종목코드 없음"
-                          ? "종목코드 없음: 자동 시세 수집에서 제외됩니다."
-                          : `조회 실패: ${quoteCheck.error}`}
-                    </p>
-                  ) : (
-                    <p className="quote-check-message muted">저장 전에 현재가 조회 가능 여부를 확인할 수 있습니다.</p>
-                  )}
                 </div>
               </div>
             </section>

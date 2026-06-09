@@ -1352,18 +1352,16 @@ textarea:focus {
 
 .entry-identity-grid {
   display: grid;
-  grid-template-columns: minmax(220px, 0.9fr) minmax(280px, 1.1fr);
-  gap: 13px;
+  grid-template-columns: repeat(2, minmax(280px, 1fr));
+  gap: 16px;
   align-items: start;
 }
 
 .entry-identity-column {
   display: grid;
-  gap: 13px;
-}
-
-.entry-identity-grid .stock-code-block {
-  grid-column: 1 / -1;
+  min-width: 0;
+  gap: 12px;
+  align-content: start;
 }
 
 .stock-code-block {
