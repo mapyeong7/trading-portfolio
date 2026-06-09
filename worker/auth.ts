@@ -11,7 +11,7 @@ export type SessionAccount = {
 };
 
 const encoder = new TextEncoder();
-const PASSWORD_HASH_ITERATIONS = 120_000;
+const PASSWORD_HASH_ITERATIONS = 100_000;
 
 function bytesToBase64(bytes: Uint8Array): string {
   let binary = "";

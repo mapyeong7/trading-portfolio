@@ -18,7 +18,7 @@
     {
       "binding": "DB",
       "database_name": "stock_return_contest",
-      "database_id": "replace-with-your-cloudflare-d1-database-id",
+      "database_id": "61697e7a-031b-47c6-a044-1621843b3f93",
       "migrations_dir": "migrations"
     }
   ]
