@@ -5,6 +5,7 @@ import { listEntries } from "./db";
 
 const QUOTE_SOURCE = "Yahoo Finance";
 const NAVER_QUOTE_SOURCE = "Naver Finance";
+const NASDAQ_QUOTE_SOURCE = "Nasdaq";
 const REFRESH_CONCURRENCY = 4;
 
 type YahooChartResult = {
@@ -50,6 +51,26 @@ type NaverQuoteResponse = {
   }>;
 };
 
+type NasdaqQuoteResponse = {
+  data?: {
+    symbol?: string;
+    primaryData?: {
+      lastSalePrice?: string;
+      lastTradeTimestamp?: string;
+    };
+    secondaryData?: {
+      lastSalePrice?: string;
+      lastTradeTimestamp?: string;
+    };
+  } | null;
+  message?: string | null;
+  status?: {
+    rCode?: number;
+    bCodeMessage?: string | null;
+    developerMessage?: string | null;
+  };
+};
+
 type QuoteSnapshot = {
   price: number;
   priceAt: string;
@@ -59,7 +80,9 @@ type QuoteSnapshot = {
 
 function asPositiveNumber(value: unknown): number | null {
   const numberValue =
-    typeof value === "string" ? Number(value.replaceAll(",", "")) : Number(value);
+    typeof value === "string"
+      ? Number(value.replaceAll(",", "").replaceAll("$", "").trim())
+      : Number(value);
   return Number.isFinite(numberValue) && numberValue > 0 ? numberValue : null;
 }
 
@@ -75,6 +98,21 @@ export function buildYahooSymbolCandidates(stockCode: string): string[] {
   }
 
   return [normalized];
+}
+
+export function buildNasdaqQuoteCandidates(stockCode: string): Array<{ symbol: string; assetClass: "stocks" | "etf" }> {
+  const normalized = stockCode.trim().toUpperCase();
+
+  if (!normalized || /^\d{6}$/.test(normalized)) {
+    return [];
+  }
+
+  const symbol = normalized.endsWith(".US") ? normalized.slice(0, -3) : normalized;
+
+  return [
+    { symbol, assetClass: "stocks" },
+    { symbol, assetClass: "etf" }
+  ];
 }
 
 function getLastClose(data: YahooChartResult): number | null {
@@ -93,6 +131,13 @@ function getLastClose(data: YahooChartResult): number | null {
 function getQuoteTimestamp(metaTime: number | undefined, timestamps: number[] | undefined): string {
   const timestamp = metaTime ?? timestamps?.[timestamps.length - 1];
   return timestamp ? new Date(timestamp * 1000).toISOString() : new Date().toISOString();
+}
+
+function getNasdaqQuoteTimestamp(primaryTimestamp: string | undefined, secondaryTimestamp: string | undefined): string {
+  const timestamp = primaryTimestamp ?? secondaryTimestamp;
+  const parsed = timestamp ? Date.parse(timestamp) : Number.NaN;
+
+  return Number.isFinite(parsed) ? new Date(parsed).toISOString() : new Date().toISOString();
 }
 
 async function fetchNaverQuote(stockCode: string, fetcher: typeof fetch): Promise<QuoteSnapshot> {
@@ -130,6 +175,67 @@ async function fetchNaverQuote(stockCode: string, fetcher: typeof fetch): Promis
     source: NAVER_QUOTE_SOURCE,
     symbol: exchangeCode ? `${normalized}.${exchangeCode}` : normalized
   };
+}
+
+async function fetchNasdaqQuote(stockCode: string, fetcher: typeof fetch): Promise<QuoteSnapshot> {
+  const candidates = buildNasdaqQuoteCandidates(stockCode);
+  const errors: string[] = [];
+
+  for (const candidate of candidates) {
+    const response = await fetcher(
+      `https://api.nasdaq.com/api/quote/${encodeURIComponent(candidate.symbol)}/info?assetclass=${
+        candidate.assetClass
+      }`,
+      {
+        headers: {
+          Accept: "application/json, text/plain, */*",
+          Origin: "https://www.nasdaq.com",
+          Referer: "https://www.nasdaq.com/",
+          "User-Agent": "Mozilla/5.0"
+        }
+      }
+    );
+
+    if (!response.ok) {
+      errors.push(`${candidate.symbol}/${candidate.assetClass}: HTTP ${response.status}`);
+      continue;
+    }
+
+    const payload = (await response.json()) as NasdaqQuoteResponse;
+    const statusCode = payload.status?.rCode;
+
+    if (statusCode && statusCode >= 400) {
+      errors.push(
+        `${candidate.symbol}/${candidate.assetClass}: ${
+          payload.status?.bCodeMessage ?? payload.status?.developerMessage ?? `rCode ${statusCode}`
+        }`
+      );
+      continue;
+    }
+
+    const data = payload.data;
+    if (!data) {
+      errors.push(`${candidate.symbol}/${candidate.assetClass}: 결과 없음`);
+      continue;
+    }
+
+    const price =
+      asPositiveNumber(data.primaryData?.lastSalePrice) ?? asPositiveNumber(data.secondaryData?.lastSalePrice);
+
+    if (price === null) {
+      errors.push(`${candidate.symbol}/${candidate.assetClass}: 현재가 없음`);
+      continue;
+    }
+
+    return {
+      price,
+      priceAt: getNasdaqQuoteTimestamp(data.primaryData?.lastTradeTimestamp, data.secondaryData?.lastTradeTimestamp),
+      source: NASDAQ_QUOTE_SOURCE,
+      symbol: data.symbol ?? candidate.symbol
+    };
+  }
+
+  throw new Error(errors.join(" / ") || "Nasdaq 시세 후보 심볼을 만들 수 없습니다.");
 }
 
 export async function fetchQuote(stockCode: string, fetcher: typeof fetch = fetch): Promise<QuoteSnapshot> {
@@ -189,6 +295,16 @@ export async function fetchQuote(stockCode: string, fetcher: typeof fetch = fetc
       };
     } catch (caughtError) {
       errors.push(`${symbol}: ${caughtError instanceof Error ? caughtError.message : "요청 실패"}`);
+    }
+  }
+
+  if (!/^\d{6}$/.test(stockCode.trim())) {
+    try {
+      return await fetchNasdaqQuote(stockCode, fetcher);
+    } catch (caughtError) {
+      errors.push(
+        `${NASDAQ_QUOTE_SOURCE}: ${caughtError instanceof Error ? caughtError.message : "요청 실패"}`
+      );
     }
   }
 
