@@ -1514,6 +1514,66 @@ textarea:focus {
   min-height: 42px;
 }
 
+.stock-search-panel {
+  display: grid;
+  gap: 7px;
+}
+
+.stock-search-panel .small-button {
+  min-height: 38px;
+  justify-self: start;
+}
+
+.stock-search-results {
+  display: grid;
+  gap: 6px;
+}
+
+.stock-search-results button {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 38px;
+  border: 1px solid #d6e0e8;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #0f172a;
+  text-align: left;
+}
+
+.stock-search-results button:hover {
+  border-color: #0f766e;
+  background: #f0fdfa;
+}
+
+.stock-search-results strong,
+.stock-search-results span,
+.stock-search-results em {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stock-search-results strong {
+  font-size: 0.82rem;
+  font-weight: 850;
+}
+
+.stock-search-results span {
+  color: #0f766e;
+  font-size: 0.78rem;
+  font-weight: 850;
+}
+
+.stock-search-results em {
+  color: #64748b;
+  font-size: 0.72rem;
+  font-style: normal;
+  font-weight: 760;
+}
+
 .quote-check-message {
   min-height: 18px;
   margin: 0;

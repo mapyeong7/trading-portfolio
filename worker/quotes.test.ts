@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { buildNasdaqQuoteCandidates, fetchQuote } from "./quotes";
+import {
+  buildNasdaqQuoteCandidates,
+  fetchQuote,
+  normalizeKoreanStockSearchItems,
+  searchKoreanStocks
+} from "./quotes";
 
 describe("quote providers", () => {
   it("builds Nasdaq candidates for US stocks and ETFs", () => {
@@ -82,5 +87,61 @@ describe("quote providers", () => {
     expect(quote.price).toBe(742.97);
     expect(quote.symbol).toBe("SPY");
     expect(quote.source).toBe("Nasdaq");
+  });
+
+  it("normalizes Korean stock search results", () => {
+    expect(
+      normalizeKoreanStockSearchItems({
+        items: [
+          {
+            code: "005930",
+            name: "삼성전자",
+            typeCode: "KOSPI",
+            typeName: "코스피",
+            nationCode: "KOR",
+            category: "stock"
+          },
+          {
+            code: "005935",
+            name: "삼성전자우",
+            typeCode: "KOSPI",
+            typeName: "코스피",
+            nationCode: "KOR",
+            category: "stock"
+          },
+          {
+            code: "AAPL",
+            name: "Apple",
+            nationCode: "USA",
+            category: "stock"
+          }
+        ]
+      })
+    ).toEqual([
+      { code: "005930", name: "삼성전자", market: "코스피" },
+      { code: "005935", name: "삼성전자우", market: "코스피" }
+    ]);
+  });
+
+  it("searches Korean stocks through Naver autocomplete", async () => {
+    const fetcher: typeof fetch = async (input) => {
+      expect(String(input)).toContain(encodeURIComponent("삼성전자"));
+      return Response.json({
+        items: [
+          {
+            code: "005930",
+            name: "삼성전자",
+            typeCode: "KOSPI",
+            typeName: "코스피",
+            nationCode: "KOR",
+            category: "stock"
+          }
+        ]
+      });
+    };
+
+    await expect(searchKoreanStocks("삼성전자", fetcher)).resolves.toEqual([
+      { code: "005930", name: "삼성전자", market: "코스피" }
+    ]);
   });
 });

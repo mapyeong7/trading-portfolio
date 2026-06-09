@@ -4,7 +4,8 @@ import type {
   EntryPreview,
   LeaderboardResponse,
   QuoteCheckResponse,
-  QuoteRefreshResponse
+  QuoteRefreshResponse,
+  StockSearchResponse
 } from "../../shared/types";
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
@@ -152,4 +153,8 @@ export function checkQuote(stockCode: string): Promise<QuoteCheckResponse> {
     method: "POST",
     body: JSON.stringify({ stockCode })
   });
+}
+
+export function searchKoreanStocks(query: string): Promise<StockSearchResponse> {
+  return request(`/api/admin/stocks/search?q=${encodeURIComponent(query)}`);
 }

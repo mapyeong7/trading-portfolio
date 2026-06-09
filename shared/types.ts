@@ -104,6 +104,17 @@ export type QuoteCheckResponse = {
   error: string | null;
 };
 
+export type StockSearchResult = {
+  code: string;
+  name: string;
+  market: string;
+};
+
+export type StockSearchResponse = {
+  query: string;
+  results: StockSearchResult[];
+};
+
 export type LeaderboardResponse = {
   selectedMonth: ContestMonth | null;
   months: ContestMonth[];

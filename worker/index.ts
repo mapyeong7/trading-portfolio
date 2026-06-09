@@ -8,7 +8,8 @@ import type {
   ApiError,
   LeaderboardResponse,
   QuoteCheckResponse,
-  QuoteRefreshResponse
+  QuoteRefreshResponse,
+  StockSearchResponse
 } from "../shared/types";
 import {
   dateBelongsToMonth,
@@ -40,7 +41,7 @@ import {
   listMonths,
   listParticipants
 } from "./db";
-import { fetchQuote, refreshQuotesForMonth } from "./quotes";
+import { fetchQuote, refreshQuotesForMonth, searchKoreanStocks } from "./quotes";
 
 type JsonBody = Record<string, unknown>;
 
@@ -729,6 +730,35 @@ async function handleAdminCheckQuote(env: Env, request: Request): Promise<Respon
   }
 }
 
+async function handleAdminStockSearch(env: Env, request: Request, url: URL): Promise<Response> {
+  if (request.method !== "GET") {
+    return error("허용되지 않은 메서드입니다.", 405);
+  }
+
+  const { response } = await requireAccount(env, request);
+  if (response) {
+    return response;
+  }
+
+  const query = normalizeText(url.searchParams.get("q") ?? "");
+
+  if (!query) {
+    return json<StockSearchResponse>({
+      query,
+      results: []
+    });
+  }
+
+  try {
+    return json<StockSearchResponse>({
+      query,
+      results: await searchKoreanStocks(query)
+    });
+  } catch (caughtError) {
+    return error(caughtError instanceof Error ? caughtError.message : "종목명 검색 실패", 502);
+  }
+}
+
 async function routeApi(env: Env, request: Request): Promise<Response> {
   const url = new URL(request.url);
 
@@ -787,6 +817,10 @@ async function routeApi(env: Env, request: Request): Promise<Response> {
 
   if (url.pathname === "/api/admin/quotes/check") {
     return handleAdminCheckQuote(env, request);
+  }
+
+  if (url.pathname === "/api/admin/stocks/search") {
+    return handleAdminStockSearch(env, request, url);
   }
 
   const finalizeMatch = url.pathname.match(/^\/api\/admin\/entries\/(\d+)\/finalize$/);

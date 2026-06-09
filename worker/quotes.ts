@@ -1,5 +1,5 @@
 import { calculateReturnPercent } from "../shared/calculations";
-import type { EntryPreview, QuoteRefreshResult } from "../shared/types";
+import type { EntryPreview, QuoteRefreshResult, StockSearchResult } from "../shared/types";
 import type { Env } from "./auth";
 import { listEntries } from "./db";
 
@@ -71,6 +71,17 @@ type NasdaqQuoteResponse = {
   };
 };
 
+type NaverStockSearchResponse = {
+  items?: Array<{
+    code?: string;
+    name?: string;
+    typeCode?: string;
+    typeName?: string;
+    nationCode?: string;
+    category?: string;
+  }>;
+};
+
 type QuoteSnapshot = {
   price: number;
   priceAt: string;
@@ -115,6 +126,35 @@ export function buildNasdaqQuoteCandidates(stockCode: string): Array<{ symbol: s
   ];
 }
 
+export function normalizeKoreanStockSearchItems(payload: NaverStockSearchResponse): StockSearchResult[] {
+  const seenCodes = new Set<string>();
+  const results: StockSearchResult[] = [];
+
+  for (const item of payload.items ?? []) {
+    const code = item.code?.trim() ?? "";
+    const name = item.name?.trim() ?? "";
+
+    if (
+      !/^\d{6}$/.test(code) ||
+      !name ||
+      seenCodes.has(code) ||
+      item.nationCode !== "KOR" ||
+      item.category !== "stock"
+    ) {
+      continue;
+    }
+
+    seenCodes.add(code);
+    results.push({
+      code,
+      name,
+      market: item.typeName?.trim() || item.typeCode?.trim() || "한국"
+    });
+  }
+
+  return results.slice(0, 8);
+}
+
 function getLastClose(data: YahooChartResult): number | null {
   const closes = data.indicators?.quote?.[0]?.close ?? [];
 
@@ -138,6 +178,41 @@ function getNasdaqQuoteTimestamp(primaryTimestamp: string | undefined, secondary
   const parsed = timestamp ? Date.parse(timestamp) : Number.NaN;
 
   return Number.isFinite(parsed) ? new Date(parsed).toISOString() : new Date().toISOString();
+}
+
+export async function searchKoreanStocks(query: string, fetcher: typeof fetch = fetch): Promise<StockSearchResult[]> {
+  const normalized = query.trim();
+
+  if (!normalized) {
+    return [];
+  }
+
+  if (/^\d{6}$/.test(normalized)) {
+    return [
+      {
+        code: normalized,
+        name: normalized,
+        market: "직접입력"
+      }
+    ];
+  }
+
+  const response = await fetcher(
+    `https://ac.stock.naver.com/ac?q=${encodeURIComponent(normalized)}&q_enc=utf-8&target=stock`,
+    {
+      headers: {
+        Accept: "application/json, text/plain, */*",
+        Referer: "https://finance.naver.com",
+        "User-Agent": "Mozilla/5.0"
+      }
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(`Naver Stock: HTTP ${response.status}`);
+  }
+
+  return normalizeKoreanStockSearchItems((await response.json()) as NaverStockSearchResponse);
 }
 
 async function fetchNaverQuote(stockCode: string, fetcher: typeof fetch): Promise<QuoteSnapshot> {

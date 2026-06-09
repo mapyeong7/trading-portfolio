@@ -6,7 +6,8 @@ import type {
   ContestMonth,
   EntryPreview,
   Participant,
-  QuoteCheckResponse
+  QuoteCheckResponse,
+  StockSearchResult
 } from "../../shared/types";
 import {
   checkQuote,
@@ -20,6 +21,7 @@ import {
   saveAccount,
   saveMonth,
   saveParticipant,
+  searchKoreanStocks,
   updateEntry,
   type EntryPayload
 } from "../lib/api";
@@ -157,12 +159,15 @@ export default function AdminApp() {
   const [entryDraft, setEntryDraft] = useState<EntryDraft>(emptyEntryDraft());
   const [entryParticipantQuery, setEntryParticipantQuery] = useState("");
   const [quoteCheck, setQuoteCheck] = useState<QuoteCheckResponse | null>(null);
+  const [stockSearchResults, setStockSearchResults] = useState<StockSearchResult[]>([]);
+  const [stockSearchMessage, setStockSearchMessage] = useState("");
   const [loginDraft, setLoginDraft] = useState({ username: "", password: "" });
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [quoteRefreshing, setQuoteRefreshing] = useState(false);
   const [quoteChecking, setQuoteChecking] = useState(false);
+  const [stockSearching, setStockSearching] = useState(false);
   const [lastDataSyncAt, setLastDataSyncAt] = useState("");
   const [lastQuoteRefreshAt, setLastQuoteRefreshAt] = useState("");
   const [activeView, setActiveView] = useState<AdminView>("entries");
@@ -322,6 +327,8 @@ export default function AdminApp() {
     setEntryDraft(emptyEntryDraft(months.find((item) => item.month === month)));
     setEntryParticipantQuery("");
     setQuoteCheck(null);
+    setStockSearchResults([]);
+    setStockSearchMessage("");
     await loadBootstrap(month);
   }
 
@@ -404,6 +411,8 @@ export default function AdminApp() {
       setEntryDraft(emptyEntryDraft(selectedMonthObject));
       setEntryParticipantQuery("");
       setQuoteCheck(null);
+      setStockSearchResults([]);
+      setStockSearchMessage("");
       setMessage(entryDraft.id ? "참가 종목을 수정했습니다." : "참가 종목을 등록했습니다.");
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "참가 종목을 저장하지 못했습니다.");
@@ -458,6 +467,46 @@ export default function AdminApp() {
     } finally {
       setQuoteChecking(false);
     }
+  }
+
+  async function handleStockSearch() {
+    setError("");
+    setStockSearchMessage("");
+    setStockSearchResults([]);
+
+    const query = entryDraft.stockName.trim() || entryDraft.stockCode.trim();
+
+    if (!query) {
+      setStockSearchMessage("종목명이나 6자리 코드를 입력해주세요.");
+      return;
+    }
+
+    setStockSearching(true);
+    try {
+      const response = await searchKoreanStocks(query);
+      setStockSearchResults(response.results);
+      setStockSearchMessage(
+        response.results.length === 0
+          ? "검색 결과가 없습니다. 종목명을 조금 더 정확히 입력해주세요."
+          : `${response.results.length.toLocaleString("ko-KR")}개 종목을 찾았습니다.`
+      );
+    } catch (caughtError) {
+      setStockSearchMessage(caughtError instanceof Error ? caughtError.message : "종목명 검색 실패");
+    } finally {
+      setStockSearching(false);
+    }
+  }
+
+  function applyStockSearchResult(result: StockSearchResult) {
+    setEntryDraft({
+      ...entryDraft,
+      stockName: result.name,
+      stockCode: result.code,
+      stockCodeUnavailable: false
+    });
+    setQuoteCheck(null);
+    setStockSearchResults([]);
+    setStockSearchMessage(`${result.name} · ${result.code}를 입력했습니다.`);
   }
 
   async function handleDeleteParticipant(participant: Participant) {
@@ -532,6 +581,8 @@ export default function AdminApp() {
     });
     setEntryParticipantQuery(entry.participantName);
     setQuoteCheck(null);
+    setStockSearchResults([]);
+    setStockSearchMessage("");
   }
 
   if (!account) {
@@ -956,9 +1007,45 @@ export default function AdminApp() {
                     종목명
                     <input
                       value={entryDraft.stockName}
-                      onChange={(event) => setEntryDraft({ ...entryDraft, stockName: event.target.value })}
+                      placeholder="삼성전자, KODEX 200 등"
+                      onChange={(event) => {
+                        setEntryDraft({ ...entryDraft, stockName: event.target.value });
+                        setStockSearchResults([]);
+                        setStockSearchMessage("");
+                      }}
                     />
                   </label>
+                  <div className="stock-search-panel">
+                    <button
+                      className="small-button"
+                      type="button"
+                      onClick={() => void handleStockSearch()}
+                      disabled={stockSearching}
+                    >
+                      {stockSearching ? "검색 중" : "한국 종목 코드 찾기"}
+                    </button>
+                    <p className="quote-check-message muted">
+                      종목명으로 한국 주식/ETF 코드를 찾습니다.
+                    </p>
+                    {stockSearchMessage ? (
+                      <p className="quote-check-message">{stockSearchMessage}</p>
+                    ) : null}
+                    {stockSearchResults.length > 0 ? (
+                      <div className="stock-search-results">
+                        {stockSearchResults.map((result) => (
+                          <button
+                            key={result.code}
+                            type="button"
+                            onClick={() => applyStockSearchResult(result)}
+                          >
+                            <strong>{result.name}</strong>
+                            <span>{result.code}</span>
+                            <em>{result.market}</em>
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
                 <ParticipantPicker
                   participants={participants.filter((participant) => participant.active)}
