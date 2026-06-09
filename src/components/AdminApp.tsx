@@ -162,6 +162,7 @@ export default function AdminApp() {
   const [entryParticipantQuery, setEntryParticipantQuery] = useState("");
   const [quoteCheck, setQuoteCheck] = useState<QuoteCheckResponse | null>(null);
   const [historicalCloseCheck, setHistoricalCloseCheck] = useState<HistoricalCloseResponse | null>(null);
+  const [exitCloseCheck, setExitCloseCheck] = useState<HistoricalCloseResponse | null>(null);
   const [stockSearchResults, setStockSearchResults] = useState<StockSearchResult[]>([]);
   const [stockSearchMessage, setStockSearchMessage] = useState("");
   const [loginDraft, setLoginDraft] = useState({ username: "", password: "" });
@@ -171,6 +172,7 @@ export default function AdminApp() {
   const [quoteRefreshing, setQuoteRefreshing] = useState(false);
   const [quoteChecking, setQuoteChecking] = useState(false);
   const [historicalCloseChecking, setHistoricalCloseChecking] = useState(false);
+  const [exitCloseChecking, setExitCloseChecking] = useState(false);
   const [stockSearching, setStockSearching] = useState(false);
   const [lastDataSyncAt, setLastDataSyncAt] = useState("");
   const [lastQuoteRefreshAt, setLastQuoteRefreshAt] = useState("");
@@ -332,6 +334,7 @@ export default function AdminApp() {
     setEntryParticipantQuery("");
     setQuoteCheck(null);
     setHistoricalCloseCheck(null);
+    setExitCloseCheck(null);
     setStockSearchResults([]);
     setStockSearchMessage("");
     await loadBootstrap(month);
@@ -391,6 +394,7 @@ export default function AdminApp() {
   async function handleEntrySubmit(event: FormEvent) {
     event.preventDefault();
     setError("");
+    const endClose = entryDraft.endClose || (entryDraft.sellDate && entryDraft.sellClose ? entryDraft.sellClose : "");
     const payload: EntryPayload = {
       id: entryDraft.id,
       monthId: Number(entryDraft.monthId),
@@ -399,7 +403,7 @@ export default function AdminApp() {
       stockCode: entryDraft.stockCodeUnavailable ? "" : entryDraft.stockCode,
       buyDate: entryDraft.buyDate,
       buyClose: entryDraft.buyClose,
-      endClose: entryDraft.endClose,
+      endClose,
       sellDate: entryDraft.sellDate,
       sellClose: entryDraft.sellClose,
       ideaMemo: entryDraft.ideaMemo
@@ -417,6 +421,7 @@ export default function AdminApp() {
       setEntryParticipantQuery("");
       setQuoteCheck(null);
       setHistoricalCloseCheck(null);
+      setExitCloseCheck(null);
       setStockSearchResults([]);
       setStockSearchMessage("");
       setMessage(entryDraft.id ? "참가 종목을 수정했습니다." : "참가 종목을 등록했습니다.");
@@ -522,6 +527,54 @@ export default function AdminApp() {
     }
   }
 
+  async function handleExitCloseLookup() {
+    setError("");
+
+    const stockCode = entryDraft.stockCodeUnavailable ? "" : entryDraft.stockCode.trim();
+    const date = entryDraft.sellDate || selectedMonthObject?.endDate || "";
+
+    if (!stockCode || !date) {
+      setExitCloseCheck({
+        ok: false,
+        stockCode,
+        date,
+        close: null,
+        tradeDate: null,
+        symbol: null,
+        source: null,
+        error: !stockCode ? "종목코드 없음" : "매도일 또는 기준월 종료일 없음"
+      });
+      return;
+    }
+
+    setExitCloseChecking(true);
+    try {
+      const response = await lookupHistoricalClose(stockCode, date);
+      setExitCloseCheck(response);
+
+      if (response.ok && response.close !== null) {
+        setEntryDraft((current) => ({
+          ...current,
+          endClose: String(response.close),
+          sellClose: current.sellDate ? String(response.close) : current.sellClose
+        }));
+      }
+    } catch (caughtError) {
+      setExitCloseCheck({
+        ok: false,
+        stockCode,
+        date,
+        close: null,
+        tradeDate: null,
+        symbol: null,
+        source: null,
+        error: caughtError instanceof Error ? caughtError.message : "종료 종가 조회 실패"
+      });
+    } finally {
+      setExitCloseChecking(false);
+    }
+  }
+
   async function handleStockSearch() {
     setError("");
     setStockSearchMessage("");
@@ -559,6 +612,7 @@ export default function AdminApp() {
     });
     setQuoteCheck(null);
     setHistoricalCloseCheck(null);
+    setExitCloseCheck(null);
     setStockSearchResults([]);
     setStockSearchMessage(`${result.name} · ${result.code}를 입력했습니다.`);
   }
@@ -636,6 +690,7 @@ export default function AdminApp() {
     setEntryParticipantQuery(entry.participantName);
     setQuoteCheck(null);
     setHistoricalCloseCheck(null);
+    setExitCloseCheck(null);
     setStockSearchResults([]);
     setStockSearchMessage("");
   }
@@ -1121,6 +1176,7 @@ export default function AdminApp() {
                           setEntryDraft({ ...entryDraft, stockCode: event.target.value });
                           setQuoteCheck(null);
                           setHistoricalCloseCheck(null);
+                          setExitCloseCheck(null);
                         }}
                       />
                     </label>
@@ -1137,6 +1193,7 @@ export default function AdminApp() {
                             });
                             setQuoteCheck(null);
                             setHistoricalCloseCheck(null);
+                            setExitCloseCheck(null);
                           }}
                         />
                         종목코드 없음
@@ -1231,23 +1288,52 @@ export default function AdminApp() {
               </div>
               <div className="entry-input-grid compact">
                 <label>
-                  월말 종가
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={entryDraft.endClose}
-                    onChange={(event) => setEntryDraft({ ...entryDraft, endClose: event.target.value })}
-                  />
-                </label>
-                <label>
                   매도일
                   <input
                     type="date"
                     value={entryDraft.sellDate}
-                    onChange={(event) => setEntryDraft({ ...entryDraft, sellDate: event.target.value })}
+                    onChange={(event) => {
+                      setEntryDraft({ ...entryDraft, sellDate: event.target.value });
+                      setExitCloseCheck(null);
+                    }}
                   />
                 </label>
+                <div className="historical-close-field">
+                  <label>
+                    월말종가
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={entryDraft.endClose}
+                      onChange={(event) => {
+                        setEntryDraft({ ...entryDraft, endClose: event.target.value });
+                        setExitCloseCheck(null);
+                      }}
+                    />
+                  </label>
+                  <button
+                    className="small-button"
+                    type="button"
+                    onClick={() => void handleExitCloseLookup()}
+                    disabled={exitCloseChecking}
+                  >
+                    {exitCloseChecking ? "조회 중" : entryDraft.sellDate ? "매도일 종가 조회" : "월말종가 조회"}
+                  </button>
+                  {exitCloseCheck ? (
+                    <p className={`quote-check-message ${exitCloseCheck.ok ? "success-text" : "error-text"}`}>
+                      {exitCloseCheck.ok && exitCloseCheck.close !== null
+                        ? `${exitCloseCheck.tradeDate ?? exitCloseCheck.date} 종가 ${formatMoney(
+                            exitCloseCheck.close
+                          )} · ${exitCloseCheck.symbol ?? exitCloseCheck.stockCode} · ${
+                            exitCloseCheck.source ?? "종가 조회"
+                          }`
+                        : `조회 실패: ${exitCloseCheck.error}`}
+                    </p>
+                  ) : (
+                    <p className="quote-check-message muted">매도일이 있으면 매도일, 없으면 기준월 종료일 종가를 조회합니다.</p>
+                  )}
+                </div>
                 <label>
                   매도 확정가
                   <input
@@ -1255,7 +1341,10 @@ export default function AdminApp() {
                     min="0"
                     step="0.01"
                     value={entryDraft.sellClose}
-                    onChange={(event) => setEntryDraft({ ...entryDraft, sellClose: event.target.value })}
+                    onChange={(event) => {
+                      setEntryDraft({ ...entryDraft, sellClose: event.target.value });
+                      setExitCloseCheck(null);
+                    }}
                   />
                 </label>
               </div>
@@ -1289,6 +1378,8 @@ export default function AdminApp() {
                     setEntryDraft(emptyEntryDraft(selectedMonthObject));
                     setEntryParticipantQuery("");
                     setQuoteCheck(null);
+                    setHistoricalCloseCheck(null);
+                    setExitCloseCheck(null);
                   }}
                 >
                   취소

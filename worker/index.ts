@@ -515,6 +515,8 @@ async function handleAdminCreateEntry(env: Env, request: Request): Promise<Respo
     return error(dateError);
   }
 
+  const persistedEndClose = endClose ?? (sellDate && sellClose !== null ? sellClose : null);
+
   try {
     await env.DB.prepare(
       `INSERT INTO entries (
@@ -537,7 +539,7 @@ async function handleAdminCreateEntry(env: Env, request: Request): Promise<Respo
         stockCode,
         buyDate,
         buyClose,
-        endClose,
+        persistedEndClose,
         sellDate,
         sellClose,
         ideaMemo
@@ -593,6 +595,8 @@ async function handleAdminPatchEntry(env: Env, request: Request, entryId: number
     return error(dateError);
   }
 
+  const persistedEndClose = endClose ?? (sellDate && sellClose !== null ? sellClose : null);
+
   await env.DB.prepare(
     `UPDATE entries
      SET stock_name = ?,
@@ -606,7 +610,7 @@ async function handleAdminPatchEntry(env: Env, request: Request, entryId: number
          updated_at = CURRENT_TIMESTAMP
      WHERE id = ?`
   )
-    .bind(stockName, stockCode, buyDate, buyClose, endClose, sellDate, sellClose, ideaMemo, entryId)
+    .bind(stockName, stockCode, buyDate, buyClose, persistedEndClose, sellDate, sellClose, ideaMemo, entryId)
     .run();
 
   return json({ entries: await listEntries(env, entry.month) });
