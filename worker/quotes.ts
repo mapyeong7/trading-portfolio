@@ -66,8 +66,26 @@ type NasdaqQuoteResponse = {
   message?: string | null;
   status?: {
     rCode?: number;
-    bCodeMessage?: string | null;
-    developerMessage?: string | null;
+    bCodeMessage?: unknown;
+    developerMessage?: unknown;
+  };
+};
+
+type NasdaqHistoricalResponse = {
+  data?: {
+    symbol?: string;
+    tradesTable?: {
+      rows?: Array<{
+        date?: string;
+        close?: string;
+      }>;
+    };
+  } | null;
+  message?: string | null;
+  status?: {
+    rCode?: number;
+    bCodeMessage?: unknown;
+    developerMessage?: unknown;
   };
 };
 
@@ -85,6 +103,13 @@ type NaverStockSearchResponse = {
 type QuoteSnapshot = {
   price: number;
   priceAt: string;
+  source: string;
+  symbol: string;
+};
+
+type HistoricalCloseSnapshot = {
+  close: number;
+  tradeDate: string;
   source: string;
   symbol: string;
 };
@@ -155,6 +180,101 @@ export function normalizeKoreanStockSearchItems(payload: NaverStockSearchRespons
   return results.slice(0, 8);
 }
 
+function compactIsoDate(date: string): string {
+  return date.replaceAll("-", "");
+}
+
+function expandCompactDate(date: string): string {
+  return `${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 8)}`;
+}
+
+function addIsoDays(date: string, days: number): string {
+  const [year, month, day] = date.split("-").map(Number);
+  const nextDate = new Date(Date.UTC(year, month - 1, day + days));
+
+  return nextDate.toISOString().slice(0, 10);
+}
+
+function formatProviderMessage(value: unknown): string | null {
+  if (!value) {
+    return null;
+  }
+
+  if (typeof value === "string") {
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((item) => formatProviderMessage(item) ?? JSON.stringify(item)).join(", ");
+  }
+
+  if (typeof value === "object") {
+    const record = value as Record<string, unknown>;
+
+    if (typeof record.errorMessage === "string") {
+      return record.errorMessage;
+    }
+
+    if (typeof record.message === "string") {
+      return record.message;
+    }
+  }
+
+  return JSON.stringify(value);
+}
+
+function parseNasdaqDate(date: string | undefined): string | null {
+  if (!date) {
+    return null;
+  }
+
+  const match = date.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (!match) {
+    return null;
+  }
+
+  const [, month, day, year] = match;
+
+  return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+}
+
+export function parseNaverHistoricalCloseRows(text: string): Array<{ tradeDate: string; close: number }> {
+  const rows: Array<{ tradeDate: string; close: number }> = [];
+  const rowPattern =
+    /\[\s*"(\d{8})"\s*,\s*[-\d.,]+\s*,\s*[-\d.,]+\s*,\s*[-\d.,]+\s*,\s*([-\d.,]+)\s*,/g;
+  let match: RegExpExecArray | null;
+
+  while ((match = rowPattern.exec(text))) {
+    const close = asPositiveNumber(match[2]);
+
+    if (close !== null) {
+      rows.push({
+        tradeDate: expandCompactDate(match[1]),
+        close
+      });
+    }
+  }
+
+  return rows;
+}
+
+export function parseNasdaqHistoricalCloseRows(
+  payload: NasdaqHistoricalResponse
+): Array<{ tradeDate: string; close: number }> {
+  const rows: Array<{ tradeDate: string; close: number }> = [];
+
+  for (const row of payload.data?.tradesTable?.rows ?? []) {
+    const tradeDate = parseNasdaqDate(row.date);
+    const close = asPositiveNumber(row.close);
+
+    if (tradeDate && close !== null) {
+      rows.push({ tradeDate, close });
+    }
+  }
+
+  return rows;
+}
+
 function getLastClose(data: YahooChartResult): number | null {
   const closes = data.indicators?.quote?.[0]?.close ?? [];
 
@@ -213,6 +333,131 @@ export async function searchKoreanStocks(query: string, fetcher: typeof fetch = 
   }
 
   return normalizeKoreanStockSearchItems((await response.json()) as NaverStockSearchResponse);
+}
+
+async function fetchNaverHistoricalClose(
+  stockCode: string,
+  date: string,
+  fetcher: typeof fetch
+): Promise<HistoricalCloseSnapshot> {
+  const normalized = stockCode.trim();
+
+  if (!/^\d{6}$/.test(normalized)) {
+    throw new Error("국내 6자리 종목코드가 아닙니다.");
+  }
+
+  const compactDate = compactIsoDate(date);
+  const response = await fetcher(
+    `https://api.finance.naver.com/siseJson.naver?symbol=${encodeURIComponent(
+      normalized
+    )}&requestType=1&startTime=${compactDate}&endTime=${compactDate}&timeframe=day`,
+    {
+      headers: {
+        Accept: "text/plain, */*",
+        "User-Agent": "Mozilla/5.0"
+      }
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(`Naver Finance: HTTP ${response.status}`);
+  }
+
+  const row = parseNaverHistoricalCloseRows(await response.text()).find((item) => item.tradeDate === date);
+
+  if (!row) {
+    throw new Error(`${date} 종가 없음`);
+  }
+
+  return {
+    close: row.close,
+    tradeDate: row.tradeDate,
+    source: NAVER_QUOTE_SOURCE,
+    symbol: normalized
+  };
+}
+
+async function fetchNasdaqHistoricalClose(
+  stockCode: string,
+  date: string,
+  fetcher: typeof fetch
+): Promise<HistoricalCloseSnapshot> {
+  const candidates = buildNasdaqQuoteCandidates(stockCode);
+  const errors: string[] = [];
+  const toDate = addIsoDays(date, 1);
+
+  for (const candidate of candidates) {
+    const response = await fetcher(
+      `https://api.nasdaq.com/api/quote/${encodeURIComponent(
+        candidate.symbol
+      )}/historical?assetclass=${candidate.assetClass}&fromdate=${date}&todate=${toDate}&limit=9999`,
+      {
+        headers: {
+          Accept: "application/json, text/plain, */*",
+          Origin: "https://www.nasdaq.com",
+          Referer: "https://www.nasdaq.com/",
+          "User-Agent": "Mozilla/5.0"
+        }
+      }
+    );
+
+    if (!response.ok) {
+      errors.push(`${candidate.symbol}/${candidate.assetClass}: HTTP ${response.status}`);
+      continue;
+    }
+
+    const payload = (await response.json()) as NasdaqHistoricalResponse;
+    const statusCode = payload.status?.rCode;
+
+    if (statusCode && statusCode >= 400) {
+      errors.push(
+        `${candidate.symbol}/${candidate.assetClass}: ${
+          formatProviderMessage(payload.status?.bCodeMessage) ??
+          formatProviderMessage(payload.status?.developerMessage) ??
+          `rCode ${statusCode}`
+        }`
+      );
+      continue;
+    }
+
+    const row = parseNasdaqHistoricalCloseRows(payload).find((item) => item.tradeDate === date);
+
+    if (!row) {
+      errors.push(`${candidate.symbol}/${candidate.assetClass}: ${date} 종가 없음`);
+      continue;
+    }
+
+    return {
+      close: row.close,
+      tradeDate: row.tradeDate,
+      source: NASDAQ_QUOTE_SOURCE,
+      symbol: payload.data?.symbol ?? candidate.symbol
+    };
+  }
+
+  throw new Error(errors.join(" / ") || "Nasdaq 과거 종가 후보 심볼을 만들 수 없습니다.");
+}
+
+export async function fetchHistoricalClose(
+  stockCode: string,
+  date: string,
+  fetcher: typeof fetch = fetch
+): Promise<HistoricalCloseSnapshot> {
+  const normalized = stockCode.trim();
+
+  if (!normalized) {
+    throw new Error("종목코드 없음");
+  }
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    throw new Error("매수일은 YYYY-MM-DD 형식이어야 합니다.");
+  }
+
+  if (/^\d{6}$/.test(normalized)) {
+    return fetchNaverHistoricalClose(normalized, date, fetcher);
+  }
+
+  return fetchNasdaqHistoricalClose(normalized, date, fetcher);
 }
 
 async function fetchNaverQuote(stockCode: string, fetcher: typeof fetch): Promise<QuoteSnapshot> {
@@ -282,7 +527,9 @@ async function fetchNasdaqQuote(stockCode: string, fetcher: typeof fetch): Promi
     if (statusCode && statusCode >= 400) {
       errors.push(
         `${candidate.symbol}/${candidate.assetClass}: ${
-          payload.status?.bCodeMessage ?? payload.status?.developerMessage ?? `rCode ${statusCode}`
+          formatProviderMessage(payload.status?.bCodeMessage) ??
+          formatProviderMessage(payload.status?.developerMessage) ??
+          `rCode ${statusCode}`
         }`
       );
       continue;

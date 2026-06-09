@@ -2,6 +2,7 @@ import type {
   AdminBootstrapResponse,
   ApiError,
   EntryPreview,
+  HistoricalCloseResponse,
   LeaderboardResponse,
   QuoteCheckResponse,
   QuoteRefreshResponse,
@@ -152,6 +153,13 @@ export function checkQuote(stockCode: string): Promise<QuoteCheckResponse> {
   return request("/api/admin/quotes/check", {
     method: "POST",
     body: JSON.stringify({ stockCode })
+  });
+}
+
+export function lookupHistoricalClose(stockCode: string, date: string): Promise<HistoricalCloseResponse> {
+  return request("/api/admin/quotes/historical-close", {
+    method: "POST",
+    body: JSON.stringify({ stockCode, date })
   });
 }
 

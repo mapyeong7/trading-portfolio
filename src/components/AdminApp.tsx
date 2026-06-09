@@ -5,6 +5,7 @@ import type {
   AdminBootstrapResponse,
   ContestMonth,
   EntryPreview,
+  HistoricalCloseResponse,
   Participant,
   QuoteCheckResponse,
   StockSearchResult
@@ -16,6 +17,7 @@ import {
   finalizeEntry,
   getAdminBootstrap,
   login,
+  lookupHistoricalClose,
   logout,
   refreshQuotes,
   saveAccount,
@@ -159,6 +161,7 @@ export default function AdminApp() {
   const [entryDraft, setEntryDraft] = useState<EntryDraft>(emptyEntryDraft());
   const [entryParticipantQuery, setEntryParticipantQuery] = useState("");
   const [quoteCheck, setQuoteCheck] = useState<QuoteCheckResponse | null>(null);
+  const [historicalCloseCheck, setHistoricalCloseCheck] = useState<HistoricalCloseResponse | null>(null);
   const [stockSearchResults, setStockSearchResults] = useState<StockSearchResult[]>([]);
   const [stockSearchMessage, setStockSearchMessage] = useState("");
   const [loginDraft, setLoginDraft] = useState({ username: "", password: "" });
@@ -167,6 +170,7 @@ export default function AdminApp() {
   const [loading, setLoading] = useState(true);
   const [quoteRefreshing, setQuoteRefreshing] = useState(false);
   const [quoteChecking, setQuoteChecking] = useState(false);
+  const [historicalCloseChecking, setHistoricalCloseChecking] = useState(false);
   const [stockSearching, setStockSearching] = useState(false);
   const [lastDataSyncAt, setLastDataSyncAt] = useState("");
   const [lastQuoteRefreshAt, setLastQuoteRefreshAt] = useState("");
@@ -327,6 +331,7 @@ export default function AdminApp() {
     setEntryDraft(emptyEntryDraft(months.find((item) => item.month === month)));
     setEntryParticipantQuery("");
     setQuoteCheck(null);
+    setHistoricalCloseCheck(null);
     setStockSearchResults([]);
     setStockSearchMessage("");
     await loadBootstrap(month);
@@ -411,6 +416,7 @@ export default function AdminApp() {
       setEntryDraft(emptyEntryDraft(selectedMonthObject));
       setEntryParticipantQuery("");
       setQuoteCheck(null);
+      setHistoricalCloseCheck(null);
       setStockSearchResults([]);
       setStockSearchMessage("");
       setMessage(entryDraft.id ? "참가 종목을 수정했습니다." : "참가 종목을 등록했습니다.");
@@ -469,6 +475,53 @@ export default function AdminApp() {
     }
   }
 
+  async function handleHistoricalCloseLookup() {
+    setError("");
+
+    const stockCode = entryDraft.stockCodeUnavailable ? "" : entryDraft.stockCode.trim();
+    const date = entryDraft.buyDate;
+
+    if (!stockCode || !date) {
+      setHistoricalCloseCheck({
+        ok: false,
+        stockCode,
+        date,
+        close: null,
+        tradeDate: null,
+        symbol: null,
+        source: null,
+        error: !stockCode ? "종목코드 없음" : "매수일 없음"
+      });
+      return;
+    }
+
+    setHistoricalCloseChecking(true);
+    try {
+      const response = await lookupHistoricalClose(stockCode, date);
+      setHistoricalCloseCheck(response);
+
+      if (response.ok && response.close !== null) {
+        setEntryDraft((current) => ({
+          ...current,
+          buyClose: String(response.close)
+        }));
+      }
+    } catch (caughtError) {
+      setHistoricalCloseCheck({
+        ok: false,
+        stockCode,
+        date,
+        close: null,
+        tradeDate: null,
+        symbol: null,
+        source: null,
+        error: caughtError instanceof Error ? caughtError.message : "매수일 종가 조회 실패"
+      });
+    } finally {
+      setHistoricalCloseChecking(false);
+    }
+  }
+
   async function handleStockSearch() {
     setError("");
     setStockSearchMessage("");
@@ -505,6 +558,7 @@ export default function AdminApp() {
       stockCodeUnavailable: false
     });
     setQuoteCheck(null);
+    setHistoricalCloseCheck(null);
     setStockSearchResults([]);
     setStockSearchMessage(`${result.name} · ${result.code}를 입력했습니다.`);
   }
@@ -581,6 +635,7 @@ export default function AdminApp() {
     });
     setEntryParticipantQuery(entry.participantName);
     setQuoteCheck(null);
+    setHistoricalCloseCheck(null);
     setStockSearchResults([]);
     setStockSearchMessage("");
   }
@@ -1064,6 +1119,7 @@ export default function AdminApp() {
                       onChange={(event) => {
                         setEntryDraft({ ...entryDraft, stockCode: event.target.value });
                         setQuoteCheck(null);
+                        setHistoricalCloseCheck(null);
                       }}
                     />
                   </label>
@@ -1079,6 +1135,7 @@ export default function AdminApp() {
                             stockCodeUnavailable: event.target.checked
                           });
                           setQuoteCheck(null);
+                          setHistoricalCloseCheck(null);
                         }}
                       />
                       종목코드 없음
@@ -1120,19 +1177,48 @@ export default function AdminApp() {
                   <input
                     type="date"
                     value={entryDraft.buyDate}
-                    onChange={(event) => setEntryDraft({ ...entryDraft, buyDate: event.target.value })}
+                    onChange={(event) => {
+                      setEntryDraft({ ...entryDraft, buyDate: event.target.value });
+                      setHistoricalCloseCheck(null);
+                    }}
                   />
                 </label>
-                <label>
-                  매수가
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={entryDraft.buyClose}
-                    onChange={(event) => setEntryDraft({ ...entryDraft, buyClose: event.target.value })}
-                  />
-                </label>
+                <div className="historical-close-field">
+                  <label>
+                    매수가
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={entryDraft.buyClose}
+                      onChange={(event) => {
+                        setEntryDraft({ ...entryDraft, buyClose: event.target.value });
+                        setHistoricalCloseCheck(null);
+                      }}
+                    />
+                  </label>
+                  <button
+                    className="small-button"
+                    type="button"
+                    onClick={() => void handleHistoricalCloseLookup()}
+                    disabled={historicalCloseChecking}
+                  >
+                    {historicalCloseChecking ? "조회 중" : "매수일 종가 조회"}
+                  </button>
+                  {historicalCloseCheck ? (
+                    <p className={`quote-check-message ${historicalCloseCheck.ok ? "success-text" : "error-text"}`}>
+                      {historicalCloseCheck.ok && historicalCloseCheck.close !== null
+                        ? `${historicalCloseCheck.tradeDate ?? historicalCloseCheck.date} 종가 ${formatMoney(
+                            historicalCloseCheck.close
+                          )} · ${historicalCloseCheck.symbol ?? historicalCloseCheck.stockCode} · ${
+                            historicalCloseCheck.source ?? "종가 조회"
+                          }`
+                        : `조회 실패: ${historicalCloseCheck.error}`}
+                    </p>
+                  ) : (
+                    <p className="quote-check-message muted">종목코드와 매수일로 종가를 자동 입력합니다.</p>
+                  )}
+                </div>
               </div>
             </section>
 

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildNasdaqQuoteCandidates,
+  fetchHistoricalClose,
   fetchQuote,
   normalizeKoreanStockSearchItems,
   searchKoreanStocks
@@ -143,5 +144,55 @@ describe("quote providers", () => {
     await expect(searchKoreanStocks("삼성전자", fetcher)).resolves.toEqual([
       { code: "005930", name: "삼성전자", market: "코스피" }
     ]);
+  });
+
+  it("fetches Korean historical close for a buy date", async () => {
+    const fetcher: typeof fetch = async (input) => {
+      expect(String(input)).toContain("symbol=005930");
+      expect(String(input)).toContain("startTime=20260605");
+
+      return new Response(`
+        [['날짜', '시가', '고가', '저가', '종가', '거래량', '외국인소진율'],
+        ["20260605", 333500, 343000, 325000, 329000, 33725012, 47.73]]
+      `);
+    };
+
+    await expect(fetchHistoricalClose("005930", "2026-06-05", fetcher)).resolves.toEqual({
+      close: 329000,
+      tradeDate: "2026-06-05",
+      source: "Naver Finance",
+      symbol: "005930"
+    });
+  });
+
+  it("fetches US historical close through Nasdaq", async () => {
+    const fetcher: typeof fetch = async (input) => {
+      const url = String(input);
+      expect(url).toContain("api.nasdaq.com/api/quote/AAPL/historical");
+      expect(url).toContain("fromdate=2026-06-05");
+      expect(url).toContain("todate=2026-06-06");
+
+      return Response.json({
+        data: {
+          symbol: "AAPL",
+          tradesTable: {
+            rows: [
+              {
+                date: "06/05/2026",
+                close: "$307.34"
+              }
+            ]
+          }
+        },
+        status: { rCode: 200 }
+      });
+    };
+
+    await expect(fetchHistoricalClose("aapl", "2026-06-05", fetcher)).resolves.toEqual({
+      close: 307.34,
+      tradeDate: "2026-06-05",
+      source: "Nasdaq",
+      symbol: "AAPL"
+    });
   });
 });

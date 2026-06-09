@@ -6,6 +6,7 @@ import {
 import type {
   AdminBootstrapResponse,
   ApiError,
+  HistoricalCloseResponse,
   LeaderboardResponse,
   QuoteCheckResponse,
   QuoteRefreshResponse,
@@ -41,7 +42,7 @@ import {
   listMonths,
   listParticipants
 } from "./db";
-import { fetchQuote, refreshQuotesForMonth, searchKoreanStocks } from "./quotes";
+import { fetchHistoricalClose, fetchQuote, refreshQuotesForMonth, searchKoreanStocks } from "./quotes";
 
 type JsonBody = Record<string, unknown>;
 
@@ -730,6 +731,59 @@ async function handleAdminCheckQuote(env: Env, request: Request): Promise<Respon
   }
 }
 
+async function handleAdminHistoricalClose(env: Env, request: Request): Promise<Response> {
+  if (request.method !== "POST") {
+    return error("허용되지 않은 메서드입니다.", 405);
+  }
+
+  const { response } = await requireAccount(env, request);
+  if (response) {
+    return response;
+  }
+
+  const body = await readJson(request);
+  const stockCode = normalizeText(body.stockCode);
+  const date = normalizeText(body.date);
+
+  if (!stockCode || !date) {
+    return json<HistoricalCloseResponse>({
+      ok: false,
+      stockCode,
+      date,
+      close: null,
+      tradeDate: null,
+      symbol: null,
+      source: null,
+      error: !stockCode ? "종목코드 없음" : "매수일 없음"
+    });
+  }
+
+  try {
+    const close = await fetchHistoricalClose(stockCode, date);
+    return json<HistoricalCloseResponse>({
+      ok: true,
+      stockCode,
+      date,
+      close: close.close,
+      tradeDate: close.tradeDate,
+      symbol: close.symbol,
+      source: close.source,
+      error: null
+    });
+  } catch (caughtError) {
+    return json<HistoricalCloseResponse>({
+      ok: false,
+      stockCode,
+      date,
+      close: null,
+      tradeDate: null,
+      symbol: null,
+      source: null,
+      error: caughtError instanceof Error ? caughtError.message.slice(0, 500) : "매수일 종가 조회 실패"
+    });
+  }
+}
+
 async function handleAdminStockSearch(env: Env, request: Request, url: URL): Promise<Response> {
   if (request.method !== "GET") {
     return error("허용되지 않은 메서드입니다.", 405);
@@ -817,6 +871,10 @@ async function routeApi(env: Env, request: Request): Promise<Response> {
 
   if (url.pathname === "/api/admin/quotes/check") {
     return handleAdminCheckQuote(env, request);
+  }
+
+  if (url.pathname === "/api/admin/quotes/historical-close") {
+    return handleAdminHistoricalClose(env, request);
   }
 
   if (url.pathname === "/api/admin/stocks/search") {

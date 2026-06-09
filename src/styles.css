@@ -1514,6 +1514,16 @@ textarea:focus {
   min-height: 42px;
 }
 
+.historical-close-field {
+  display: grid;
+  gap: 7px;
+}
+
+.historical-close-field .small-button {
+  min-height: 38px;
+  justify-self: start;
+}
+
 .stock-search-panel {
   display: grid;
   gap: 7px;

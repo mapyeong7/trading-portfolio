@@ -104,6 +104,17 @@ export type QuoteCheckResponse = {
   error: string | null;
 };
 
+export type HistoricalCloseResponse = {
+  ok: boolean;
+  stockCode: string;
+  date: string;
+  close: number | null;
+  tradeDate: string | null;
+  symbol: string | null;
+  source: string | null;
+  error: string | null;
+};
+
 export type StockSearchResult = {
   code: string;
   name: string;
