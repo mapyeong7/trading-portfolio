@@ -930,158 +930,202 @@ export default function AdminApp() {
             </div>
             <span className="status-pill">매수 1회 · 매도 1회</span>
           </div>
-          <form className="form-grid wide" onSubmit={handleEntrySubmit}>
-            <label>
-              기준월
-              <select
-                value={entryDraft.monthId}
-                onChange={(event) => setEntryDraft({ ...entryDraft, monthId: event.target.value })}
-              >
-                <option value="">선택</option>
-                {months.map((month) => (
-                  <option key={month.id} value={month.id}>
-                    {month.month}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <ParticipantPicker
-              participants={participants.filter((participant) => participant.active)}
-              value={entryDraft.participantId}
-              query={entryParticipantQuery}
-              onQueryChange={setEntryParticipantQuery}
-              onChange={(participantId) => setEntryDraft({ ...entryDraft, participantId })}
-            />
-            <label>
-              종목명
-              <input
-                value={entryDraft.stockName}
-                onChange={(event) => setEntryDraft({ ...entryDraft, stockName: event.target.value })}
-              />
-            </label>
-            <label>
-              종목코드
-              <input
-                value={entryDraft.stockCode}
-                disabled={entryDraft.stockCodeUnavailable}
-                placeholder={entryDraft.stockCodeUnavailable ? "코드 없음" : "005930, AAPL, SPY 등"}
-                onChange={(event) => {
-                  setEntryDraft({ ...entryDraft, stockCode: event.target.value });
-                  setQuoteCheck(null);
-                }}
-              />
-            </label>
-            <label className="checkbox-label">
-              <input
-                type="checkbox"
-                checked={entryDraft.stockCodeUnavailable}
-                onChange={(event) => {
-                  setEntryDraft({
-                    ...entryDraft,
-                    stockCode: event.target.checked ? "" : entryDraft.stockCode,
-                    stockCodeUnavailable: event.target.checked
-                  });
-                  setQuoteCheck(null);
-                }}
-              />
-              종목코드 없음
-            </label>
-            <div className="quote-check-field">
-              <button
-                className="small-button"
-                type="button"
-                onClick={() => void handleQuoteCheck()}
-                disabled={quoteChecking}
-              >
-                {quoteChecking ? "확인 중" : "코드 확인"}
+          <form className="entry-editor-form" onSubmit={handleEntrySubmit}>
+            <section className="entry-input-group">
+              <div className="entry-group-heading">
+                <span>01</span>
+                <h3>참가자와 종목</h3>
+              </div>
+              <div className="entry-identity-grid">
+                <div className="entry-identity-column">
+                  <label>
+                    기준월
+                    <select
+                      value={entryDraft.monthId}
+                      onChange={(event) => setEntryDraft({ ...entryDraft, monthId: event.target.value })}
+                    >
+                      <option value="">선택</option>
+                      {months.map((month) => (
+                        <option key={month.id} value={month.id}>
+                          {month.month}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    종목명
+                    <input
+                      value={entryDraft.stockName}
+                      onChange={(event) => setEntryDraft({ ...entryDraft, stockName: event.target.value })}
+                    />
+                  </label>
+                </div>
+                <ParticipantPicker
+                  participants={participants.filter((participant) => participant.active)}
+                  value={entryDraft.participantId}
+                  query={entryParticipantQuery}
+                  onQueryChange={setEntryParticipantQuery}
+                  onChange={(participantId) => setEntryDraft({ ...entryDraft, participantId })}
+                />
+                <div className="stock-code-block">
+                  <label>
+                    종목코드
+                    <input
+                      value={entryDraft.stockCode}
+                      disabled={entryDraft.stockCodeUnavailable}
+                      placeholder={entryDraft.stockCodeUnavailable ? "코드 없음" : "005930, AAPL, SPY 등"}
+                      onChange={(event) => {
+                        setEntryDraft({ ...entryDraft, stockCode: event.target.value });
+                        setQuoteCheck(null);
+                      }}
+                    />
+                  </label>
+                  <div className="stock-code-actions">
+                    <label className="checkbox-label">
+                      <input
+                        type="checkbox"
+                        checked={entryDraft.stockCodeUnavailable}
+                        onChange={(event) => {
+                          setEntryDraft({
+                            ...entryDraft,
+                            stockCode: event.target.checked ? "" : entryDraft.stockCode,
+                            stockCodeUnavailable: event.target.checked
+                          });
+                          setQuoteCheck(null);
+                        }}
+                      />
+                      종목코드 없음
+                    </label>
+                    <button
+                      className="small-button"
+                      type="button"
+                      onClick={() => void handleQuoteCheck()}
+                      disabled={quoteChecking}
+                    >
+                      {quoteChecking ? "확인 중" : "코드 확인"}
+                    </button>
+                  </div>
+                  {quoteCheck ? (
+                    <p className={`quote-check-message ${quoteCheck.ok ? "success-text" : "error-text"}`}>
+                      {quoteCheck.ok
+                        ? `${quoteCheck.symbol ?? quoteCheck.stockCode} · ${formatMoney(quoteCheck.price)} · ${
+                            quoteCheck.source ?? "시세 확인"
+                          }`
+                        : quoteCheck.error === "종목코드 없음"
+                          ? "종목코드 없음: 자동 시세 수집에서 제외됩니다."
+                          : `조회 실패: ${quoteCheck.error}`}
+                    </p>
+                  ) : (
+                    <p className="quote-check-message muted">저장 전에 현재가 조회 가능 여부를 확인할 수 있습니다.</p>
+                  )}
+                </div>
+              </div>
+            </section>
+
+            <section className="entry-input-group">
+              <div className="entry-group-heading">
+                <span>02</span>
+                <h3>매수</h3>
+              </div>
+              <div className="entry-input-grid compact">
+                <label>
+                  매수일
+                  <input
+                    type="date"
+                    value={entryDraft.buyDate}
+                    onChange={(event) => setEntryDraft({ ...entryDraft, buyDate: event.target.value })}
+                  />
+                </label>
+                <label>
+                  매수가
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={entryDraft.buyClose}
+                    onChange={(event) => setEntryDraft({ ...entryDraft, buyClose: event.target.value })}
+                  />
+                </label>
+              </div>
+            </section>
+
+            <section className="entry-input-group">
+              <div className="entry-group-heading">
+                <span>03</span>
+                <h3>종료</h3>
+              </div>
+              <div className="entry-input-grid compact">
+                <label>
+                  월말 종가
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={entryDraft.endClose}
+                    onChange={(event) => setEntryDraft({ ...entryDraft, endClose: event.target.value })}
+                  />
+                </label>
+                <label>
+                  매도일
+                  <input
+                    type="date"
+                    value={entryDraft.sellDate}
+                    onChange={(event) => setEntryDraft({ ...entryDraft, sellDate: event.target.value })}
+                  />
+                </label>
+                <label>
+                  매도 확정가
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={entryDraft.sellClose}
+                    onChange={(event) => setEntryDraft({ ...entryDraft, sellClose: event.target.value })}
+                  />
+                </label>
+              </div>
+            </section>
+
+            <section className="entry-input-group">
+              <div className="entry-group-heading">
+                <span>04</span>
+                <h3>아이디어</h3>
+              </div>
+              <label>
+                아이디어 메모
+                <textarea
+                  value={entryDraft.ideaMemo}
+                  onChange={(event) => setEntryDraft({ ...entryDraft, ideaMemo: event.target.value })}
+                  rows={5}
+                  placeholder="종목을 고른 이유, 이벤트, 참고 링크를 적어주세요."
+                />
+              </label>
+            </section>
+
+            <div className="entry-submit-bar">
+              <button className="primary-button" type="submit">
+                {entryDraft.id ? "참가 종목 수정" : "참가 종목 추가"}
               </button>
-              {quoteCheck ? (
-                <p className={`quote-check-message ${quoteCheck.ok ? "success-text" : "error-text"}`}>
-                  {quoteCheck.ok
-                    ? `${quoteCheck.symbol ?? quoteCheck.stockCode} · ${formatMoney(quoteCheck.price)} · ${
-                        quoteCheck.source ?? "시세 확인"
-                      }`
-                    : quoteCheck.error === "종목코드 없음"
-                      ? "종목코드 없음: 자동 시세 수집에서 제외됩니다."
-                      : `조회 실패: ${quoteCheck.error}`}
-                </p>
-              ) : (
-                <p className="quote-check-message muted">저장 전에 현재가 조회 가능 여부를 확인할 수 있습니다.</p>
-              )}
+              {entryDraft.id ? (
+                <button
+                  className="ghost-button"
+                  type="button"
+                  onClick={() => {
+                    setEntryDraft(emptyEntryDraft(selectedMonthObject));
+                    setEntryParticipantQuery("");
+                    setQuoteCheck(null);
+                  }}
+                >
+                  취소
+                </button>
+              ) : null}
             </div>
-            <label>
-              매수일
-              <input
-                type="date"
-                value={entryDraft.buyDate}
-                onChange={(event) => setEntryDraft({ ...entryDraft, buyDate: event.target.value })}
-              />
-            </label>
-            <label>
-              매수가
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                value={entryDraft.buyClose}
-                onChange={(event) => setEntryDraft({ ...entryDraft, buyClose: event.target.value })}
-              />
-            </label>
-            <label>
-              월말 종가
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                value={entryDraft.endClose}
-                onChange={(event) => setEntryDraft({ ...entryDraft, endClose: event.target.value })}
-              />
-            </label>
-            <label>
-              매도일
-              <input
-                type="date"
-                value={entryDraft.sellDate}
-                onChange={(event) => setEntryDraft({ ...entryDraft, sellDate: event.target.value })}
-              />
-            </label>
-            <label>
-              매도 확정가
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                value={entryDraft.sellClose}
-                onChange={(event) => setEntryDraft({ ...entryDraft, sellClose: event.target.value })}
-              />
-            </label>
-            <label className="textarea-label">
-              아이디어 메모
-              <textarea
-                value={entryDraft.ideaMemo}
-                onChange={(event) => setEntryDraft({ ...entryDraft, ideaMemo: event.target.value })}
-                rows={5}
-                placeholder="종목을 고른 이유, 이벤트, 참고 링크를 적어주세요."
-              />
-            </label>
-            <button className="primary-button" type="submit">
-              {entryDraft.id ? "참가 종목 수정" : "참가 종목 추가"}
-            </button>
-            {entryDraft.id ? (
-              <button
-                className="ghost-button"
-                type="button"
-                onClick={() => {
-                  setEntryDraft(emptyEntryDraft(selectedMonthObject));
-                  setEntryParticipantQuery("");
-                  setQuoteCheck(null);
-                }}
-              >
-                취소
-              </button>
-            ) : null}
           </form>
 
+          <div className="entry-list-heading">
+            <h3>등록된 참가 종목</h3>
+            <span>{entries.length.toLocaleString("ko-KR")}개</span>
+          </div>
           <div className="admin-entry-list">
             {entries.map((entry) => (
               <article className="admin-entry" key={entry.id}>
