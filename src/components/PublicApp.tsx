@@ -290,6 +290,11 @@ export default function PublicApp() {
           <section className="empty-state">
             <h2>아직 기준월이 없습니다.</h2>
             <p>관리 화면에서 기준월과 참가 종목을 먼저 등록해주세요.</p>
+            <div className="empty-state-actions">
+              <a className="side-menu-admin-link" href="/admin">
+                관리자 로그인
+              </a>
+            </div>
           </section>
         ) : null}
 

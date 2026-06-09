@@ -1216,6 +1216,18 @@ tbody tr:last-child td {
   padding: 24px;
 }
 
+.empty-state-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.empty-state-actions .side-menu-admin-link {
+  min-width: 150px;
+  padding: 0 14px;
+}
+
 .empty-state.compact {
   padding: 18px;
 }
