@@ -1,0 +1,25 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "stock-return-contest",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-06-03",
+  "assets": {
+    "directory": "./dist/client",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application"
+  },
+  "vars": {
+    "SESSION_COOKIE_NAME": "stock_contest_session"
+  },
+  "triggers": {
+    "crons": ["*/15 0-7 * * 1-5"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "stock_return_contest",
+      "database_id": "replace-with-your-cloudflare-d1-database-id",
+      "migrations_dir": "migrations"
+    }
+  ]
+}

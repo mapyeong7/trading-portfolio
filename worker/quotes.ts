@@ -1,0 +1,300 @@
+import { calculateReturnPercent } from "../shared/calculations";
+import type { EntryPreview, QuoteRefreshResult } from "../shared/types";
+import type { Env } from "./auth";
+import { listEntries } from "./db";
+
+const QUOTE_SOURCE = "Yahoo Finance";
+const NAVER_QUOTE_SOURCE = "Naver Finance";
+const REFRESH_CONCURRENCY = 4;
+
+type YahooChartResult = {
+  meta?: {
+    currency?: string;
+    exchangeName?: string;
+    instrumentType?: string;
+    previousClose?: number;
+    regularMarketPrice?: number;
+    regularMarketTime?: number;
+    shortName?: string;
+    symbol?: string;
+  };
+  timestamp?: number[];
+  indicators?: {
+    quote?: Array<{
+      close?: Array<number | null>;
+    }>;
+  };
+};
+
+type YahooChartResponse = {
+  chart?: {
+    result?: YahooChartResult[];
+    error?: {
+      code?: string;
+      description?: string;
+    } | null;
+  };
+};
+
+type NaverQuoteResponse = {
+  datas?: Array<{
+    itemCode?: string;
+    stockName?: string;
+    closePrice?: string;
+    closePriceRaw?: string;
+    localTradedAt?: string;
+    stockExchangeType?: {
+      code?: string;
+      nameKor?: string;
+    };
+  }>;
+};
+
+type QuoteSnapshot = {
+  price: number;
+  priceAt: string;
+  source: string;
+  symbol: string;
+};
+
+function asPositiveNumber(value: unknown): number | null {
+  const numberValue =
+    typeof value === "string" ? Number(value.replaceAll(",", "")) : Number(value);
+  return Number.isFinite(numberValue) && numberValue > 0 ? numberValue : null;
+}
+
+export function buildYahooSymbolCandidates(stockCode: string): string[] {
+  const normalized = stockCode.trim().toUpperCase();
+
+  if (!normalized) {
+    return [];
+  }
+
+  if (/^\d{6}$/.test(normalized)) {
+    return [`${normalized}.KS`, `${normalized}.KQ`];
+  }
+
+  return [normalized];
+}
+
+function getLastClose(data: YahooChartResult): number | null {
+  const closes = data.indicators?.quote?.[0]?.close ?? [];
+
+  for (let index = closes.length - 1; index >= 0; index -= 1) {
+    const close = asPositiveNumber(closes[index]);
+    if (close !== null) {
+      return close;
+    }
+  }
+
+  return null;
+}
+
+function getQuoteTimestamp(metaTime: number | undefined, timestamps: number[] | undefined): string {
+  const timestamp = metaTime ?? timestamps?.[timestamps.length - 1];
+  return timestamp ? new Date(timestamp * 1000).toISOString() : new Date().toISOString();
+}
+
+async function fetchNaverQuote(stockCode: string, fetcher: typeof fetch): Promise<QuoteSnapshot> {
+  const normalized = stockCode.trim();
+
+  if (!/^\d{6}$/.test(normalized)) {
+    throw new Error("국내 6자리 종목코드가 아닙니다.");
+  }
+
+  const response = await fetcher(
+    `https://polling.finance.naver.com/api/realtime/domestic/stock/${encodeURIComponent(normalized)}`
+  );
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`);
+  }
+
+  const payload = (await response.json()) as NaverQuoteResponse;
+  const data = payload.datas?.[0];
+
+  if (!data) {
+    throw new Error("결과 없음");
+  }
+
+  const price = asPositiveNumber(data.closePriceRaw) ?? asPositiveNumber(data.closePrice);
+  if (price === null) {
+    throw new Error("현재가 없음");
+  }
+
+  const exchangeCode = data.stockExchangeType?.code;
+
+  return {
+    price,
+    priceAt: data.localTradedAt ? new Date(data.localTradedAt).toISOString() : new Date().toISOString(),
+    source: NAVER_QUOTE_SOURCE,
+    symbol: exchangeCode ? `${normalized}.${exchangeCode}` : normalized
+  };
+}
+
+export async function fetchQuote(stockCode: string, fetcher: typeof fetch = fetch): Promise<QuoteSnapshot> {
+  const providerErrors: string[] = [];
+
+  if (/^\d{6}$/.test(stockCode.trim())) {
+    try {
+      return await fetchNaverQuote(stockCode, fetcher);
+    } catch (caughtError) {
+      providerErrors.push(
+        `${NAVER_QUOTE_SOURCE}: ${caughtError instanceof Error ? caughtError.message : "요청 실패"}`
+      );
+    }
+  }
+
+  const candidates = buildYahooSymbolCandidates(stockCode);
+  const errors = [...providerErrors];
+
+  for (const symbol of candidates) {
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(
+      symbol
+    )}?range=1d&interval=1m`;
+
+    try {
+      const response = await fetcher(url);
+
+      if (!response.ok) {
+        errors.push(`${symbol}: HTTP ${response.status}`);
+        continue;
+      }
+
+      const payload = (await response.json()) as YahooChartResponse;
+      const chartError = payload.chart?.error;
+
+      if (chartError) {
+        errors.push(`${symbol}: ${chartError.description ?? chartError.code ?? "응답 오류"}`);
+        continue;
+      }
+
+      const result = payload.chart?.result?.[0];
+      if (!result) {
+        errors.push(`${symbol}: 결과 없음`);
+        continue;
+      }
+
+      const price = asPositiveNumber(result.meta?.regularMarketPrice) ?? getLastClose(result);
+      if (price === null) {
+        errors.push(`${symbol}: 현재가 없음`);
+        continue;
+      }
+
+      return {
+        price,
+        priceAt: getQuoteTimestamp(result.meta?.regularMarketTime, result.timestamp),
+        source: QUOTE_SOURCE,
+        symbol: result.meta?.symbol ?? symbol
+      };
+    } catch (caughtError) {
+      errors.push(`${symbol}: ${caughtError instanceof Error ? caughtError.message : "요청 실패"}`);
+    }
+  }
+
+  throw new Error(errors.join(" / ") || "시세 후보 심볼을 만들 수 없습니다.");
+}
+
+export async function refreshEntryQuote(env: Env, entry: EntryPreview): Promise<QuoteRefreshResult> {
+  if (!entry.stockCode.trim()) {
+    const message = "종목코드 없음";
+
+    await env.DB.prepare(
+      `UPDATE entries
+       SET current_price = NULL,
+           current_price_at = NULL,
+           current_price_source = NULL,
+           current_price_symbol = NULL,
+           current_return_percent = NULL,
+           current_price_error = ?,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = ?`
+    )
+      .bind(message, entry.id)
+      .run();
+
+    return {
+      entryId: entry.id,
+      participantName: entry.participantName,
+      stockName: entry.stockName,
+      stockCode: entry.stockCode,
+      ok: false,
+      price: null,
+      returnPercent: null,
+      priceAt: null,
+      symbol: null,
+      source: null,
+      error: message
+    };
+  }
+
+  try {
+    const quote = await fetchQuote(entry.stockCode);
+    const returnPercent = calculateReturnPercent(entry.buyClose, quote.price);
+
+    await env.DB.prepare(
+      `UPDATE entries
+       SET current_price = ?,
+           current_price_at = ?,
+           current_price_source = ?,
+           current_price_symbol = ?,
+           current_return_percent = ?,
+           current_price_error = NULL,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = ?`
+    )
+      .bind(quote.price, quote.priceAt, quote.source, quote.symbol, returnPercent, entry.id)
+      .run();
+
+    return {
+      entryId: entry.id,
+      participantName: entry.participantName,
+      stockName: entry.stockName,
+      stockCode: entry.stockCode,
+      ok: true,
+      price: quote.price,
+      returnPercent,
+      priceAt: quote.priceAt,
+      symbol: quote.symbol,
+      source: quote.source,
+      error: null
+    };
+  } catch (caughtError) {
+    const message = caughtError instanceof Error ? caughtError.message : "시세를 가져오지 못했습니다.";
+
+    await env.DB.prepare(
+      `UPDATE entries
+       SET current_price_error = ?,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = ?`
+    )
+      .bind(message.slice(0, 500), entry.id)
+      .run();
+
+    return {
+      entryId: entry.id,
+      participantName: entry.participantName,
+      stockName: entry.stockName,
+      stockCode: entry.stockCode,
+      ok: false,
+      price: null,
+      returnPercent: null,
+      priceAt: null,
+      symbol: null,
+      source: QUOTE_SOURCE,
+      error: message
+    };
+  }
+}
+
+export async function refreshQuotesForMonth(env: Env, month?: string): Promise<QuoteRefreshResult[]> {
+  const entries = (await listEntries(env, month)).filter((entry) => month || !entry.finalizedAt);
+  const results: QuoteRefreshResult[] = [];
+
+  for (let index = 0; index < entries.length; index += REFRESH_CONCURRENCY) {
+    const chunk = entries.slice(index, index + REFRESH_CONCURRENCY);
+    results.push(...(await Promise.all(chunk.map((entry) => refreshEntryQuote(env, entry)))));
+  }
+
+  return results;
+}

@@ -1,0 +1,31 @@
+{
+  "name": "stock-return-contest",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite dev",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "vitest run --config vitest.config.ts",
+    "deploy": "npm run build && wrangler deploy --config dist/stock_return_contest/wrangler.json",
+    "db:migrate:local": "wrangler d1 migrations apply stock_return_contest --local",
+    "db:migrate:remote": "wrangler d1 migrations apply stock_return_contest --remote",
+    "account:sql": "node scripts/hash-password.mjs"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "latest",
+    "react": "latest",
+    "react-dom": "latest"
+  },
+  "devDependencies": {
+    "@cloudflare/vite-plugin": "latest",
+    "@cloudflare/workers-types": "latest",
+    "@types/react": "^19.2.16",
+    "@types/react-dom": "^19.2.3",
+    "typescript": "latest",
+    "vite": "latest",
+    "vitest": "latest",
+    "wrangler": "latest"
+  }
+}
