@@ -30,6 +30,17 @@ export function getEntryPreview(entry: Entry): EntryPreview {
     };
   }
 
+  if (entry.currentPrice !== null) {
+    return {
+      ...entry,
+      previewExitDate: entry.currentPriceAt ? entry.currentPriceAt.slice(0, 10) : null,
+      previewExitClose: entry.currentPrice,
+      previewReturnPercent:
+        entry.currentReturnPercent ?? calculateReturnPercent(entry.buyClose, entry.currentPrice),
+      exitSource: "current"
+    };
+  }
+
   return {
     ...entry,
     previewExitDate: null,

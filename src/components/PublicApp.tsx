@@ -235,6 +235,21 @@ export default function PublicApp() {
   );
   const getDashboardReturn = (entry: EntryPreview) =>
     entry.finalReturnPercent ?? entry.currentReturnPercent ?? entry.previewReturnPercent;
+  const getPreviewExitLabel = (entry: EntryPreview) => {
+    if (entry.exitSource === "sell") {
+      return "매도 기준";
+    }
+
+    if (entry.exitSource === "month-end") {
+      return "월말 기준";
+    }
+
+    if (entry.exitSource === "current") {
+      return "최근 조회 기준";
+    }
+
+    return "기준 종료";
+  };
 
   return (
     <div className="app-shell public-shell">
@@ -580,7 +595,7 @@ export default function PublicApp() {
                         {formatStockCode(entry.stockCode)} · 매수 {entry.buyDate} {formatMoney(entry.buyClose)}
                       </p>
                       <p>
-                        기준 종료{" "}
+                        {getPreviewExitLabel(entry)}{" "}
                         {entry.previewExitDate
                           ? `${entry.previewExitDate} ${formatMoney(entry.previewExitClose)}`
                           : "미정"}

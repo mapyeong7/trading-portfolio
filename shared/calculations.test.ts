@@ -60,6 +60,20 @@ describe("contest calculations", () => {
     expect(preview.previewReturnPercent).toBe(-20);
   });
 
+  it("uses current price as the preview when no exit close exists", () => {
+    const preview = getEntryPreview({
+      ...baseEntry,
+      currentPrice: 112,
+      currentPriceAt: "2026-06-09T14:30:00.000Z",
+      currentReturnPercent: 12
+    });
+
+    expect(preview.exitSource).toBe("current");
+    expect(preview.previewExitDate).toBe("2026-06-09");
+    expect(preview.previewExitClose).toBe(112);
+    expect(preview.previewReturnPercent).toBe(12);
+  });
+
   it("builds official monthly ranking from finalized entries only", () => {
     const finalized = getEntryPreview({
       ...baseEntry,

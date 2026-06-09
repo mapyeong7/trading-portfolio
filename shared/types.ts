@@ -56,7 +56,7 @@ export type EntryPreview = Entry & {
   previewExitDate: string | null;
   previewExitClose: number | null;
   previewReturnPercent: number | null;
-  exitSource: "sell" | "month-end" | "pending";
+  exitSource: "sell" | "month-end" | "current" | "pending";
 };
 
 export type MonthlyRankingItem = EntryPreview & {

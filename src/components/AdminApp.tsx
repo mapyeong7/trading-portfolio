@@ -204,6 +204,21 @@ export default function AdminApp() {
     () => participants.filter((participant) => participant.active).length,
     [participants]
   );
+  const getPreviewExitLabel = (entry: EntryPreview) => {
+    if (entry.exitSource === "sell") {
+      return "매도 기준";
+    }
+
+    if (entry.exitSource === "month-end") {
+      return "월말 기준";
+    }
+
+    if (entry.exitSource === "current") {
+      return "최근 조회 기준";
+    }
+
+    return "기준 종료";
+  };
 
   const loadBootstrap = useCallback(async (month?: string, options?: { silent?: boolean; keepDrafts?: boolean }) => {
     if (!options?.silent) {
@@ -1401,7 +1416,7 @@ export default function AdminApp() {
                     {entry.stockName} <small>{formatStockCode(entry.stockCode)}</small>
                   </h3>
                   <p>
-                    매수 {entry.buyDate} {formatMoney(entry.buyClose)} · 기준 종료{" "}
+                    매수 {entry.buyDate} {formatMoney(entry.buyClose)} · {getPreviewExitLabel(entry)}{" "}
                     {entry.previewExitDate
                       ? `${entry.previewExitDate} ${formatMoney(entry.previewExitClose)}`
                       : "미정"}
