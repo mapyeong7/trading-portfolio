@@ -947,6 +947,10 @@ tbody tr:last-child td {
   display: none;
 }
 
+.mobile-admin-list {
+  display: none;
+}
+
 .entries-list,
 .admin-entry-list,
 .quote-list {
@@ -2067,9 +2071,83 @@ textarea:focus {
     display: none;
   }
 
+  .admin-shell .table-wrap {
+    display: none;
+  }
+
+  .admin-shell .form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-shell .form-grid .primary-button,
+  .admin-shell .form-grid .ghost-button {
+    width: 100%;
+  }
+
   .mobile-rank-list {
     display: grid;
     gap: 8px;
+  }
+
+  .mobile-admin-list {
+    display: grid;
+    gap: 8px;
+  }
+
+  .mobile-admin-card {
+    display: grid;
+    gap: 7px;
+    min-width: 0;
+    padding: 12px;
+    border: 1px solid #dde3ec;
+    border-radius: 10px;
+    background: #ffffff;
+    box-shadow: 0 8px 20px rgba(15, 23, 42, 0.05);
+  }
+
+  .mobile-admin-card-main {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    min-width: 0;
+  }
+
+  .mobile-admin-card-main strong {
+    min-width: 0;
+    overflow: hidden;
+    color: #111827;
+    font-size: 0.95rem;
+    font-weight: 850;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .mobile-admin-card-main .status-pill {
+    flex: 0 0 auto;
+    min-height: 24px;
+    padding: 4px 8px;
+    font-size: 0.7rem;
+  }
+
+  .mobile-admin-card p,
+  .mobile-admin-card small {
+    margin: 0;
+    color: #64748b;
+    font-size: 0.8rem;
+    line-height: 1.45;
+    word-break: break-word;
+  }
+
+  .mobile-admin-actions {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+    gap: 7px;
+    margin-top: 2px;
+  }
+
+  .mobile-admin-actions .small-button {
+    width: 100%;
   }
 
   .mobile-rank-card {

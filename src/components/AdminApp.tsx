@@ -936,6 +936,23 @@ export default function AdminApp() {
               </tbody>
             </table>
           </div>
+          <div className="mobile-admin-list" aria-label="관리자 계정 모바일 목록">
+            {accounts.map((adminAccount) => (
+              <article className="mobile-admin-card" key={adminAccount.id}>
+                <div className="mobile-admin-card-main">
+                  <strong>{adminAccount.username}</strong>
+                  {account?.id === adminAccount.id ? <span className="current-account-mark">현재</span> : null}
+                </div>
+                <p>{adminAccount.displayName}</p>
+                <small>생성 {formatDateTime(adminAccount.createdAt)}</small>
+                <div className="mobile-admin-actions">
+                  <button className="small-button" type="button" onClick={() => editAccount(adminAccount)}>
+                    수정
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
         </section>
             ) : null}
 
@@ -1014,6 +1031,36 @@ export default function AdminApp() {
                 ))}
               </tbody>
             </table>
+          </div>
+          <div className="mobile-admin-list" aria-label="참가자 모바일 목록">
+            {participants.map((participant) => (
+              <article className="mobile-admin-card" key={participant.id}>
+                <div className="mobile-admin-card-main">
+                  <strong>{participant.name}</strong>
+                  <span className={`status-pill ${participant.active ? "status-open" : "status-finalized"}`}>
+                    {participant.active ? "활성" : "비활성"}
+                  </span>
+                </div>
+                <p>{participant.memo || "메모 없음"}</p>
+                <div className="mobile-admin-actions">
+                  <button className="small-button" type="button" onClick={() => editParticipant(participant)}>
+                    수정
+                  </button>
+                  <button
+                    className="small-button danger-button"
+                    type="button"
+                    onClick={() => void handleDeleteParticipant(participant)}
+                  >
+                    삭제
+                  </button>
+                </div>
+              </article>
+            ))}
+            {participants.length === 0 ? (
+              <div className="empty-state compact">
+                <h3>등록된 참가자가 없습니다.</h3>
+              </div>
+            ) : null}
           </div>
         </section>
             ) : null}
