@@ -467,6 +467,28 @@ export default function PublicApp() {
                 placeholder="참가자, 종목, 종목코드, 매도 여부로 찾기"
                 resultLabel={`${filteredMonthlyRanking.length.toLocaleString("ko-KR")} / ${data.monthlyRanking.length.toLocaleString("ko-KR")}명`}
               />
+              <div className="mobile-rank-list" aria-label="월간 순위 모바일 목록">
+                {filteredMonthlyRanking.map((entry) => (
+                  <article className="mobile-rank-card" key={entry.id}>
+                    <div>
+                      <strong>{entry.rank}</strong>
+                      <span>{entry.participantName}</span>
+                    </div>
+                    <em className={returnClass(entry.officialReturnPercent)}>
+                      {formatPercent(entry.officialReturnPercent)}
+                    </em>
+                    <p>{entry.stockName}</p>
+                    <small>
+                      매수 {entry.buyDate} · {entry.sellDate ? "매도 확정" : "월말 확정"}
+                    </small>
+                  </article>
+                ))}
+                {data.monthlyRanking.length === 0 || filteredMonthlyRanking.length === 0 ? (
+                  <div className="empty-state compact">
+                    <h3>{data.monthlyRanking.length === 0 ? "아직 확정된 월간 순위가 없습니다." : "검색 결과가 없습니다."}</h3>
+                  </div>
+                ) : null}
+              </div>
               <div className="table-wrap">
                 <table>
                   <thead>
@@ -532,6 +554,30 @@ export default function PublicApp() {
                 placeholder="참가자, 순위, 확정 월수로 찾기"
                 resultLabel={`${filteredCumulativeRanking.length.toLocaleString("ko-KR")} / ${data.cumulativeRanking.length.toLocaleString("ko-KR")}명`}
               />
+              <div className="mobile-rank-list" aria-label="지속 순위 모바일 목록">
+                {filteredCumulativeRanking.map((item) => (
+                  <article className="mobile-rank-card" key={item.participantId}>
+                    <div>
+                      <strong>{item.rank}</strong>
+                      <span>{item.participantName}</span>
+                    </div>
+                    <em className={returnClass(item.cumulativeReturnPercent)}>
+                      {formatPercent(item.cumulativeReturnPercent)}
+                    </em>
+                    <p>누적자산지수 {item.assetIndex.toFixed(2)}</p>
+                    <small>확정 {item.completedMonths}개월</small>
+                  </article>
+                ))}
+                {data.cumulativeRanking.length === 0 || filteredCumulativeRanking.length === 0 ? (
+                  <div className="empty-state compact">
+                    <h3>
+                      {data.cumulativeRanking.length === 0
+                        ? "아직 지속 순위에 반영된 확정 결과가 없습니다."
+                        : "검색 결과가 없습니다."}
+                    </h3>
+                  </div>
+                ) : null}
+              </div>
               <div className="table-wrap">
                 <table>
                   <thead>
