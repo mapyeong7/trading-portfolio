@@ -8,6 +8,19 @@ const NAVER_QUOTE_SOURCE = "Naver Finance";
 const NASDAQ_QUOTE_SOURCE = "Nasdaq";
 const REFRESH_CONCURRENCY = 4;
 const HISTORICAL_LOOKUP_WINDOW_DAYS = 10;
+const KOREAN_ETF_ISSUERS = [
+  "TIGER",
+  "KODEX",
+  "ACE",
+  "RISE",
+  "KBSTAR",
+  "SOL",
+  "PLUS",
+  "HANARO",
+  "KOSEF",
+  "TIMEFOLIO",
+  "ARIRANG"
+];
 
 type YahooChartResult = {
   meta?: {
@@ -185,6 +198,21 @@ export function normalizeKoreanStockSearchItems(payload: NaverStockSearchRespons
   return results.slice(0, 8);
 }
 
+function buildKoreanStockSearchQueries(query: string): string[] {
+  const normalized = query.trim().replace(/\s+/g, " ");
+  const withoutTrailingPunctuation = normalized.replace(/[.,。．]+$/g, "").trim();
+  const withoutEtfSuffix = withoutTrailingPunctuation.replace(/\s*ETF$/i, "").trim();
+  const queries = [normalized, withoutTrailingPunctuation, withoutEtfSuffix];
+  const upperQuery = withoutEtfSuffix.toUpperCase();
+  const hasIssuer = KOREAN_ETF_ISSUERS.some((issuer) => upperQuery.startsWith(`${issuer} `) || upperQuery === issuer);
+
+  if (withoutEtfSuffix && !hasIssuer) {
+    queries.push(...KOREAN_ETF_ISSUERS.map((issuer) => `${issuer} ${withoutEtfSuffix}`));
+  }
+
+  return queries.filter((item, index) => item && queries.indexOf(item) === index);
+}
+
 function compactIsoDate(date: string): string {
   return date.replaceAll("-", "");
 }
@@ -340,22 +368,30 @@ export async function searchKoreanStocks(query: string, fetcher: typeof fetch = 
     ];
   }
 
-  const response = await fetcher(
-    `https://ac.stock.naver.com/ac?q=${encodeURIComponent(normalized)}&q_enc=utf-8&target=stock`,
-    {
-      headers: {
-        Accept: "application/json, text/plain, */*",
-        Referer: "https://finance.naver.com",
-        "User-Agent": "Mozilla/5.0"
+  for (const searchQuery of buildKoreanStockSearchQueries(normalized)) {
+    const response = await fetcher(
+      `https://ac.stock.naver.com/ac?q=${encodeURIComponent(searchQuery)}&q_enc=utf-8&target=stock`,
+      {
+        headers: {
+          Accept: "application/json, text/plain, */*",
+          Referer: "https://finance.naver.com",
+          "User-Agent": "Mozilla/5.0"
+        }
       }
-    }
-  );
+    );
 
-  if (!response.ok) {
-    throw new Error(`Naver Stock: HTTP ${response.status}`);
+    if (!response.ok) {
+      throw new Error(`Naver Stock: HTTP ${response.status}`);
+    }
+
+    const results = normalizeKoreanStockSearchItems((await response.json()) as NaverStockSearchResponse);
+
+    if (results.length > 0) {
+      return results;
+    }
   }
 
-  return normalizeKoreanStockSearchItems((await response.json()) as NaverStockSearchResponse);
+  return [];
 }
 
 async function fetchNaverHistoricalClose(

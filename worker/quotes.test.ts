@@ -156,6 +156,38 @@ describe("quote providers", () => {
     ]);
   });
 
+  it("cleans punctuation and retries Korean ETF search aliases", async () => {
+    const requestedQueries: string[] = [];
+    const fetcher: typeof fetch = async (input) => {
+      const url = new URL(String(input));
+      const query = url.searchParams.get("q") ?? "";
+      requestedQueries.push(query);
+
+      if (query === "TIGER 미국필라델피아반도체나스닥") {
+        return Response.json({
+          items: [
+            {
+              code: "381180",
+              name: "TIGER 미국필라델피아반도체나스닥",
+              typeCode: "KOSPI",
+              typeName: "코스피",
+              nationCode: "KOR",
+              category: "stock"
+            }
+          ]
+        });
+      }
+
+      return Response.json({ items: [] });
+    };
+
+    await expect(searchKoreanStocks("미국필라델피아반도체나스닥.", fetcher)).resolves.toEqual([
+      { code: "381180", name: "TIGER 미국필라델피아반도체나스닥", market: "코스피" }
+    ]);
+    expect(requestedQueries).toContain("미국필라델피아반도체나스닥");
+    expect(requestedQueries).toContain("TIGER 미국필라델피아반도체나스닥");
+  });
+
   it("accepts Korean alphanumeric ETF codes as direct stock search input", async () => {
     await expect(searchKoreanStocks("0193w0")).resolves.toEqual([
       { code: "0193W0", name: "0193W0", market: "직접입력" }
