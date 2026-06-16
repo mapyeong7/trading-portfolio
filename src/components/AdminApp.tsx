@@ -6,6 +6,7 @@ import type {
   ContestMonth,
   EntryPreview,
   HistoricalCloseResponse,
+  MonthStatus,
   Participant,
   QuoteCheckResponse,
   StockSearchResult
@@ -53,7 +54,7 @@ type MonthDraft = {
   title: string;
   startDate: string;
   endDate: string;
-  status: string;
+  status: MonthStatus;
 };
 
 type EntryDraft = {
@@ -72,6 +73,7 @@ type EntryDraft = {
 };
 
 type AdminView = "entries" | "participants" | "months" | "accounts";
+type AdminNavIcon = "entries" | "participants" | "months" | "accounts" | "refresh";
 
 const currentMonth = new Date().toISOString().slice(0, 7);
 const AUTO_QUOTE_REFRESH_MS = 15 * 60 * 1000;
@@ -100,12 +102,24 @@ function isKoreanMarketRefreshWindow(date = new Date()): boolean {
   );
 }
 
-const adminNavItems: Array<{ id: AdminView; label: string; eyebrow: string }> = [
-  { id: "entries", label: "참가 종목", eyebrow: "Entries" },
-  { id: "participants", label: "참가자", eyebrow: "People" },
-  { id: "months", label: "기준월", eyebrow: "Months" },
-  { id: "accounts", label: "관리자 계정", eyebrow: "Admins" }
+const adminNavItems: Array<{ id: AdminView; label: string; eyebrow: string; icon: AdminNavIcon }> = [
+  { id: "entries", label: "참가 종목", eyebrow: "Entries", icon: "entries" },
+  { id: "participants", label: "참가자", eyebrow: "People", icon: "participants" },
+  { id: "months", label: "기준월", eyebrow: "Months", icon: "months" },
+  { id: "accounts", label: "관리자 계정", eyebrow: "Admins", icon: "accounts" }
 ];
+
+function formatMonthStatus(status: MonthStatus): string {
+  if (status === "draft") {
+    return "준비중";
+  }
+
+  if (status === "open") {
+    return "진행중";
+  }
+
+  return "마감";
+}
 
 function emptyAccountDraft(): AccountDraft {
   return {
@@ -204,6 +218,10 @@ export default function AdminApp() {
   const activeParticipantCount = useMemo(
     () => participants.filter((participant) => participant.active).length,
     [participants]
+  );
+  const editingEntry = useMemo(
+    () => entries.find((entry) => entry.id === entryDraft.id) ?? null,
+    [entries, entryDraft.id]
   );
   const getPreviewExitLabel = (entry: EntryPreview) => {
     if (entry.exitSource === "sell") {
@@ -805,9 +823,21 @@ export default function AdminApp() {
           <img src="/contest-mark.svg" alt="" className="brand-mark" />
           <div>
             <p className="eyebrow">Contest Admin</p>
-            <h1>대회 관리</h1>
+            <h1>
+              <span className="desktop-admin-title">대회 관리</span>
+              <span className="mobile-admin-title">월간 주식 수익률 대회</span>
+            </h1>
           </div>
         </div>
+        <a className="admin-mobile-contest-link" href="/" aria-label="대회 화면으로 이동">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4 19h16" />
+            <path d="M7 16V9" />
+            <path d="M12 16V5" />
+            <path d="M17 16v-4" />
+          </svg>
+          <span>대회 화면</span>
+        </a>
         <div className="admin-topbar header-ranking-topbar" aria-label="관리 상단 상태">
           <div className="admin-topbar-track">
             <span className="admin-topbar-badge">Admin</span>
@@ -858,8 +888,11 @@ export default function AdminApp() {
                   key={item.id}
                   onClick={() => setActiveView(item.id)}
                 >
-                  <span>{item.eyebrow}</span>
-                  {item.label}
+                  <span className="admin-menu-eyebrow">{item.eyebrow}</span>
+                  <span className="admin-mobile-nav-icon" aria-hidden="true">
+                    <AdminUiIcon name={item.icon} />
+                  </span>
+                  <span className="admin-menu-label">{item.label}</span>
                 </button>
               ))}
               <button
@@ -868,8 +901,11 @@ export default function AdminApp() {
                 onClick={() => void handleRefreshQuotes()}
                 disabled={quoteRefreshing || !selectedMonth}
               >
-                <span>Manual</span>
-                {quoteRefreshing ? "갱신 중" : "수동 갱신"}
+                <span className="admin-menu-eyebrow">Manual</span>
+                <span className="admin-mobile-nav-icon" aria-hidden="true">
+                  <AdminUiIcon name="refresh" />
+                </span>
+                <span className="admin-menu-label">{quoteRefreshing ? "갱신 중" : "시세 갱신"}</span>
               </button>
             </div>
 
@@ -1158,11 +1194,11 @@ export default function AdminApp() {
               상태
               <select
                 value={monthDraft.status}
-                onChange={(event) => setMonthDraft({ ...monthDraft, status: event.target.value })}
+                onChange={(event) => setMonthDraft({ ...monthDraft, status: event.target.value as MonthStatus })}
               >
-                <option value="draft">draft</option>
-                <option value="open">open</option>
-                <option value="finalized">finalized</option>
+                <option value="draft">준비중</option>
+                <option value="open">진행중</option>
+                <option value="finalized">마감</option>
               </select>
             </label>
             <button className="primary-button" type="submit">
@@ -1178,7 +1214,7 @@ export default function AdminApp() {
             {months.map((month) => (
               <button className="month-chip" type="button" key={month.id} onClick={() => editMonth(month)}>
                 {month.month}
-                <span>{month.status}</span>
+                <span>{formatMonthStatus(month.status)}</span>
               </button>
             ))}
           </div>
@@ -1187,6 +1223,19 @@ export default function AdminApp() {
 
             {activeView === "entries" ? (
         <section id="entries" className="section-band content-panel">
+          <div className="admin-entry-mobile-intro">
+            <span>ADMIN MODE</span>
+            <h2>참가 종목 관리</h2>
+            <p>참가자의 종목 매수/매도 정보를 관리합니다.</p>
+            <button
+              className="admin-entry-list-jump"
+              type="button"
+              onClick={() => document.getElementById("admin-entry-list")?.scrollIntoView({ behavior: "smooth" })}
+            >
+              <span aria-hidden="true">←</span>
+              대회 종목 바로가기
+            </button>
+          </div>
           <div className="section-heading">
             <div>
               <p className="eyebrow">Entries</p>
@@ -1197,13 +1246,20 @@ export default function AdminApp() {
           <form className="entry-editor-form" onSubmit={handleEntrySubmit}>
             <section className="entry-input-group">
               <div className="entry-group-heading">
-                <span>01</span>
-                <h3>참가자와 종목</h3>
+                <span>1</span>
+                <h3>참가자 및 종목</h3>
               </div>
               <div className="entry-identity-grid">
                 <div className="entry-identity-column">
+                  <ParticipantPicker
+                    participants={participants.filter((participant) => participant.active)}
+                    value={entryDraft.participantId}
+                    query={entryParticipantQuery}
+                    onQueryChange={setEntryParticipantQuery}
+                    onChange={(participantId) => setEntryDraft({ ...entryDraft, participantId })}
+                  />
                   <label>
-                    기준월
+                    대회 월
                     <select
                       value={entryDraft.monthId}
                       onChange={(event) => setEntryDraft({ ...entryDraft, monthId: event.target.value })}
@@ -1216,13 +1272,6 @@ export default function AdminApp() {
                       ))}
                     </select>
                   </label>
-                  <ParticipantPicker
-                    participants={participants.filter((participant) => participant.active)}
-                    value={entryDraft.participantId}
-                    query={entryParticipantQuery}
-                    onQueryChange={setEntryParticipantQuery}
-                    onChange={(participantId) => setEntryDraft({ ...entryDraft, participantId })}
-                  />
                 </div>
                 <div className="entry-identity-column">
                   <label>
@@ -1237,37 +1286,6 @@ export default function AdminApp() {
                       }}
                     />
                   </label>
-                  <div className="stock-search-panel">
-                    <button
-                      className="small-button"
-                      type="button"
-                      onClick={() => void handleStockSearch()}
-                      disabled={stockSearching}
-                    >
-                      {stockSearching ? "검색 중" : "한국 종목 코드 찾기"}
-                    </button>
-                    <p className="quote-check-message muted">
-                      종목명으로 한국 주식/ETF 코드를 찾습니다.
-                    </p>
-                    {stockSearchMessage ? (
-                      <p className="quote-check-message">{stockSearchMessage}</p>
-                    ) : null}
-                    {stockSearchResults.length > 0 ? (
-                      <div className="stock-search-results">
-                        {stockSearchResults.map((result) => (
-                          <button
-                            key={result.code}
-                            type="button"
-                            onClick={() => applyStockSearchResult(result)}
-                          >
-                            <strong>{result.name}</strong>
-                            <span>{result.code}</span>
-                            <em>{result.market}</em>
-                          </button>
-                        ))}
-                      </div>
-                    ) : null}
-                  </div>
                   <div className="stock-code-block">
                     <label>
                       종목코드
@@ -1307,7 +1325,7 @@ export default function AdminApp() {
                         onClick={() => void handleQuoteCheck()}
                         disabled={quoteChecking}
                       >
-                        {quoteChecking ? "확인 중" : "코드 확인"}
+                        {quoteChecking ? "확인 중" : "종목 검증"}
                       </button>
                     </div>
                     {quoteCheck ? (
@@ -1324,14 +1342,45 @@ export default function AdminApp() {
                       <p className="quote-check-message muted">저장 전에 현재가 조회 가능 여부를 확인할 수 있습니다.</p>
                     )}
                   </div>
+                  <div className="stock-search-panel">
+                    <button
+                      className="small-button"
+                      type="button"
+                      onClick={() => void handleStockSearch()}
+                      disabled={stockSearching}
+                    >
+                      {stockSearching ? "검색 중" : "한국 종목 코드 찾기"}
+                    </button>
+                    <p className="quote-check-message muted">
+                      한국 종목명으로 주식/ETF 코드를 찾습니다. 미국 종목은 티커를 직접 입력하세요.
+                    </p>
+                    {stockSearchMessage ? (
+                      <p className="quote-check-message">{stockSearchMessage}</p>
+                    ) : null}
+                    {stockSearchResults.length > 0 ? (
+                      <div className="stock-search-results">
+                        {stockSearchResults.map((result) => (
+                          <button
+                            key={result.code}
+                            type="button"
+                            onClick={() => applyStockSearchResult(result)}
+                          >
+                            <strong>{result.name}</strong>
+                            <span>{result.code}</span>
+                            <em>{result.market}</em>
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
               </div>
             </section>
 
             <section className="entry-input-group">
               <div className="entry-group-heading">
-                <span>02</span>
-                <h3>매수</h3>
+                <span>2</span>
+                <h3>매수 정보</h3>
               </div>
               <div className="entry-input-grid compact">
                 <label>
@@ -1386,8 +1435,8 @@ export default function AdminApp() {
 
             <section className="entry-input-group">
               <div className="entry-group-heading">
-                <span>03</span>
-                <h3>종료</h3>
+                <span>3</span>
+                <h3>매도 / 종료 정보</h3>
               </div>
               <div className="entry-input-grid compact">
                 <label>
@@ -1455,11 +1504,11 @@ export default function AdminApp() {
 
             <section className="entry-input-group">
               <div className="entry-group-heading">
-                <span>04</span>
-                <h3>아이디어</h3>
+                <span>4</span>
+                <h3>메모</h3>
               </div>
               <label>
-                아이디어 메모
+                관리자 메모
                 <textarea
                   value={entryDraft.ideaMemo}
                   onChange={(event) => setEntryDraft({ ...entryDraft, ideaMemo: event.target.value })}
@@ -1470,28 +1519,35 @@ export default function AdminApp() {
             </section>
 
             <div className="entry-submit-bar">
-              <button className="primary-button" type="submit">
-                {entryDraft.id ? "참가 종목 수정" : "참가 종목 추가"}
+              <button
+                className="ghost-button"
+                type="button"
+                onClick={() => {
+                  setEntryDraft(emptyEntryDraft(selectedMonthObject));
+                  setEntryParticipantQuery("");
+                  setQuoteCheck(null);
+                  setHistoricalCloseCheck(null);
+                  setExitCloseCheck(null);
+                }}
+              >
+                취소
               </button>
-              {entryDraft.id ? (
-                <button
-                  className="ghost-button"
-                  type="button"
-                  onClick={() => {
-                    setEntryDraft(emptyEntryDraft(selectedMonthObject));
-                    setEntryParticipantQuery("");
-                    setQuoteCheck(null);
-                    setHistoricalCloseCheck(null);
-                    setExitCloseCheck(null);
-                  }}
-                >
-                  취소
-                </button>
-              ) : null}
+              <button
+                className="primary-button entry-finalize-button"
+                type="button"
+                onClick={() => editingEntry && void handleFinalize(editingEntry)}
+                disabled={!editingEntry || Boolean(editingEntry.finalizedAt)}
+              >
+                결과 확정
+              </button>
+              <button className="primary-button entry-save-button" type="submit">
+                <span className="desktop-save-label">{entryDraft.id ? "참가 종목 수정" : "참가 종목 추가"}</span>
+                <span className="mobile-save-label">저장</span>
+              </button>
             </div>
           </form>
 
-          <div className="entry-list-heading">
+          <div className="entry-list-heading" id="admin-entry-list">
             <h3>등록된 참가 종목</h3>
             <span>{entries.length.toLocaleString("ko-KR")}개</span>
           </div>
@@ -1575,6 +1631,55 @@ export default function AdminApp() {
   );
 }
 
+function AdminUiIcon({ name }: { name: AdminNavIcon }) {
+  if (name === "entries") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M5 5h14v5H5zM5 14h14v5H5z" />
+        <path d="M8 10v4M16 10v4" />
+      </svg>
+    );
+  }
+
+  if (name === "participants") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6z" />
+        <path d="M3.5 20a5.5 5.5 0 0 1 11 0" />
+        <path d="M16 8.5a2.5 2.5 0 1 0 0-5" />
+        <path d="M17 14.5a4.5 4.5 0 0 1 3.5 4.4" />
+      </svg>
+    );
+  }
+
+  if (name === "months") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M7 3v4M17 3v4M4 8h16M5 5h14v15H5z" />
+        <path d="M8 12h2M12 12h2M16 12h2M8 16h2M12 16h2" />
+      </svg>
+    );
+  }
+
+  if (name === "accounts") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M12 3l7 3v5c0 4.5-2.8 7.9-7 10-4.2-2.1-7-5.5-7-10V6z" />
+        <path d="M9 12l2 2 4-5" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M20 12a8 8 0 0 1-14.2 5" />
+      <path d="M4 17h5v5" />
+      <path d="M4 12a8 8 0 0 1 14.2-5" />
+      <path d="M20 7h-5V2" />
+    </svg>
+  );
+}
+
 function ParticipantPicker({
   participants,
   value,
@@ -1617,7 +1722,7 @@ function ParticipantPicker({
   return (
     <div className="participant-picker">
       <label>
-        참가자
+        참가자 이름
         <input
           type="search"
           value={query}

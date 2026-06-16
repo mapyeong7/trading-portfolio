@@ -6,8 +6,10 @@ import {
 import type {
   AdminBootstrapResponse,
   ApiError,
+  ContestMonth,
   HistoricalCloseResponse,
   LeaderboardResponse,
+  MonthStatus,
   QuoteCheckResponse,
   QuoteRefreshResponse,
   StockSearchResponse
@@ -145,12 +147,29 @@ function getFinalizeDateForStockCode(stockCode: string): string {
   return getTodayInTimeZone(isKoreanDomesticCode(stockCode) ? "Asia/Seoul" : "America/New_York");
 }
 
+function isMonthStatus(value: unknown): value is MonthStatus {
+  return value === "draft" || value === "open" || value === "finalized";
+}
+
+function getPublicMonths(months: ContestMonth[]): ContestMonth[] {
+  return months.filter((month) => month.status !== "draft");
+}
+
+function selectContestMonth(months: ContestMonth[], requestedMonth: string | null): ContestMonth | null {
+  return (
+    (requestedMonth ? months.find((month) => month.month === requestedMonth) : undefined) ??
+    months.find((month) => month.status === "open") ??
+    months[0] ??
+    null
+  );
+}
+
 async function handleMonths(env: Env, request: Request): Promise<Response> {
   if (request.method !== "GET") {
     return error("허용되지 않은 메서드입니다.", 405);
   }
 
-  return json({ months: await listMonths(env) });
+  return json({ months: getPublicMonths(await listMonths(env)) });
 }
 
 async function handleEntries(env: Env, request: Request, url: URL): Promise<Response> {
@@ -164,7 +183,15 @@ async function handleEntries(env: Env, request: Request, url: URL): Promise<Resp
     return error("month는 YYYY-MM 형식이어야 합니다.");
   }
 
-  return json({ entries: await listEntries(env, month) });
+  const publicMonths = getPublicMonths(await listMonths(env));
+  const publicMonthKeys = new Set(publicMonths.map((item) => item.month));
+
+  if (month) {
+    return json({ entries: publicMonthKeys.has(month) ? await listEntries(env, month) : [] });
+  }
+
+  const publicEntries = (await listEntries(env)).filter((entry) => publicMonthKeys.has(entry.month));
+  return json({ entries: publicEntries });
 }
 
 async function handleLeaderboard(env: Env, request: Request, url: URL): Promise<Response> {
@@ -172,12 +199,12 @@ async function handleLeaderboard(env: Env, request: Request, url: URL): Promise<
     return error("허용되지 않은 메서드입니다.", 405);
   }
 
-  const months = await listMonths(env);
+  const months = getPublicMonths(await listMonths(env));
   const requestedMonth = url.searchParams.get("month");
-  const selectedMonth =
-    (requestedMonth ? months.find((month) => month.month === requestedMonth) : months[0]) ?? null;
+  const selectedMonth = selectContestMonth(months, requestedMonth);
   const selectedMonthEntries = selectedMonth ? await listEntries(env, selectedMonth.month) : [];
-  const allEntries = await listEntries(env);
+  const publicMonthKeys = new Set(months.map((month) => month.month));
+  const allEntries = (await listEntries(env)).filter((entry) => publicMonthKeys.has(entry.month));
   const cumulativeEntries = selectedMonth
     ? allEntries.filter((entry) => entry.month <= selectedMonth.month)
     : allEntries;
@@ -272,8 +299,7 @@ async function handleAdminBootstrap(env: Env, request: Request, url: URL): Promi
 
   const months = await listMonths(env);
   const requestedMonth = url.searchParams.get("month");
-  const selectedMonth =
-    (requestedMonth ? months.find((month) => month.month === requestedMonth) : months[0]) ?? null;
+  const selectedMonth = selectContestMonth(months, requestedMonth);
   const payload: AdminBootstrapResponse = {
     account: account!,
     accounts: await listAccounts(env),
@@ -461,9 +487,7 @@ async function handleAdminMonths(env: Env, request: Request): Promise<Response> 
   const title = normalizeText(body.title);
   const startDate = normalizeText(body.startDate) || getMonthStart(month);
   const endDate = normalizeText(body.endDate) || getMonthEnd(month);
-  const status = ["draft", "open", "finalized"].includes(String(body.status))
-    ? String(body.status)
-    : "open";
+  const status: MonthStatus = isMonthStatus(body.status) ? body.status : "open";
 
   if (!isMonthKey(month)) {
     return error("기준월은 YYYY-MM 형식이어야 합니다.");
@@ -477,21 +501,51 @@ async function handleAdminMonths(env: Env, request: Request): Promise<Response> 
     return error("종료일은 시작일 이후여야 합니다.");
   }
 
+  const duplicate = await getMonthByKey(env, month);
+  if (duplicate && duplicate.id !== id) {
+    return error("이미 같은 기준월이 있습니다.", 409);
+  }
+
   try {
     if (id) {
-      await env.DB.prepare(
+      const existing = await getMonthById(env, id);
+      if (!existing) {
+        return error("수정할 기준월을 찾을 수 없습니다.", 404);
+      }
+
+      const updateMonth = env.DB.prepare(
         `UPDATE contest_months
          SET month = ?, title = ?, start_date = ?, end_date = ?, status = ?, updated_at = CURRENT_TIMESTAMP
          WHERE id = ?`
       )
-        .bind(month, title, startDate, endDate, status, id)
-        .run();
+        .bind(month, title, startDate, endDate, status, id);
+
+      if (status === "open") {
+        await env.DB.batch([
+          env.DB.prepare(
+            "UPDATE contest_months SET status = 'finalized', updated_at = CURRENT_TIMESTAMP WHERE status = 'open' AND id <> ?"
+          ).bind(id),
+          updateMonth
+        ]);
+      } else {
+        await updateMonth.run();
+      }
     } else {
-      await env.DB.prepare(
+      const insertMonth = env.DB.prepare(
         "INSERT INTO contest_months (month, title, start_date, end_date, status) VALUES (?, ?, ?, ?, ?)"
       )
-        .bind(month, title, startDate, endDate, status)
-        .run();
+        .bind(month, title, startDate, endDate, status);
+
+      if (status === "open") {
+        await env.DB.batch([
+          env.DB.prepare(
+            "UPDATE contest_months SET status = 'finalized', updated_at = CURRENT_TIMESTAMP WHERE status = 'open'"
+          ),
+          insertMonth
+        ]);
+      } else {
+        await insertMonth.run();
+      }
     }
   } catch (caughtError) {
     if (String(caughtError).includes("UNIQUE")) {

@@ -5,13 +5,20 @@ import { formatDateTime, formatMoney, formatPercent, formatStockCode, returnClas
 import MemoText from "./MemoText";
 
 type PublicView = "dashboard" | "quotes" | "monthly" | "cumulative" | "entries";
+type PublicNavIcon = "dashboard" | "quotes" | "monthly" | "cumulative" | "entries";
 
-const publicNavItems: Array<{ id: PublicView; label: string; eyebrow: string }> = [
-  { id: "dashboard", label: "대시보드", eyebrow: "Top 3" },
-  { id: "quotes", label: "현재가", eyebrow: "Live" },
-  { id: "monthly", label: "월간 순위", eyebrow: "Monthly" },
-  { id: "cumulative", label: "지속 순위", eyebrow: "Cumulative" },
-  { id: "entries", label: "참가 종목", eyebrow: "Ideas" }
+const publicNavItems: Array<{
+  id: PublicView;
+  label: string;
+  eyebrow: string;
+  icon: PublicNavIcon;
+  hideOnMobile?: boolean;
+}> = [
+  { id: "dashboard", label: "대시보드", eyebrow: "Top 3", icon: "dashboard" },
+  { id: "quotes", label: "현재가", eyebrow: "Live", icon: "quotes", hideOnMobile: true },
+  { id: "monthly", label: "월간 순위", eyebrow: "Monthly", icon: "monthly" },
+  { id: "cumulative", label: "지속 순위", eyebrow: "Cumulative", icon: "cumulative" },
+  { id: "entries", label: "참가 종목", eyebrow: "Ideas", icon: "entries" }
 ];
 
 const ENTRIES_PER_PAGE = 10;
@@ -235,6 +242,12 @@ export default function PublicApp() {
   );
   const getDashboardReturn = (entry: EntryPreview) =>
     entry.finalReturnPercent ?? entry.currentReturnPercent ?? entry.previewReturnPercent;
+  const getDashboardPrice = (entry: EntryPreview) =>
+    entry.currentPrice ?? entry.finalExitClose ?? entry.previewExitClose;
+  const formatWon = (value: number | null | undefined) =>
+    value === null || value === undefined ? "-" : `${formatMoney(value)}원`;
+  const visibleMissingParticipants = data?.missingParticipantNames.slice(0, 4) ?? [];
+  const hiddenMissingCount = Math.max(0, (data?.missingParticipantNames.length ?? 0) - visibleMissingParticipants.length);
   const getPreviewExitLabel = (entry: EntryPreview) => {
     if (entry.exitSource === "sell") {
       return "매도 기준";
@@ -261,6 +274,10 @@ export default function PublicApp() {
             <h1>월간 주식 수익률 대회</h1>
           </div>
         </div>
+        <a className="public-header-admin-link" href="/admin" aria-label="관리자 화면으로 이동">
+          <UiIcon name="admin" />
+          <span>관리자</span>
+        </a>
         {data?.selectedMonth ? (
           <div className="ranking-topbar header-ranking-topbar" aria-label="상단 랭킹 요약">
             <div className="ranking-ticker-track">
@@ -330,20 +347,21 @@ export default function PublicApp() {
               <div className="side-menu-list">
                 {publicNavItems.map((item) => (
                   <button
-                    className={`side-menu-item ${activeView === item.id ? "active" : ""}`}
+                    className={`side-menu-item ${activeView === item.id ? "active" : ""} ${
+                      item.hideOnMobile ? "mobile-hidden-nav" : ""
+                    }`}
                     type="button"
                     key={item.id}
                     onClick={() => setActiveView(item.id)}
                   >
-                    <span>{item.eyebrow}</span>
-                    {item.label}
+                    <span className="side-menu-eyebrow">{item.eyebrow}</span>
+                    <span className="mobile-nav-icon" aria-hidden="true">
+                      <UiIcon name={item.icon} />
+                    </span>
+                    <span className="side-menu-label">{item.label}</span>
                   </button>
                 ))}
               </div>
-
-              <a className="side-menu-admin-link" href="/admin">
-                관리자 모드
-              </a>
 
               <p className="side-note">미확정 순위는 현재가, 확정 순위는 확정일 종가 기준입니다.</p>
             </aside>
@@ -351,12 +369,32 @@ export default function PublicApp() {
             <div className="content-layer">
               {activeView === "dashboard" ? (
                 <section className="section-band content-panel">
+                  <div className="mobile-dashboard-top-panels" aria-label="모바일 TOP 3">
+                    <MobileTopCard
+                      title="이번 달 TOP 3"
+                      icon="calendar"
+                      variant="monthly"
+                      items={topMonthly}
+                      valueKey="officialReturnPercent"
+                    />
+                    <MobileTopCard
+                      title="누적 TOP 3"
+                      icon="trend"
+                      variant="cumulative"
+                      items={topCumulative}
+                      valueKey="cumulativeReturnPercent"
+                    />
+                  </div>
+
                   <div className="section-heading dashboard-entry-heading">
                     <div>
                       <p className="eyebrow">This Month Entries</p>
                       <h2>이번달 참가 종목</h2>
                     </div>
-                    <span className="missing-participant-pill">
+                    <button className="dashboard-see-all" type="button" onClick={() => setActiveView("entries")}>
+                      전체 보기
+                    </button>
+                    <span className="missing-participant-pill desktop-missing-pill">
                       <strong>미참가</strong>
                       <span>
                         {data.missingParticipantNames.length > 0
@@ -369,9 +407,25 @@ export default function PublicApp() {
                   <div className="dashboard-entry-grid">
                     {dashboardEntries.map((entry) => (
                       <article className="dashboard-entry-card" key={entry.id}>
-                        <span>{entry.participantName}</span>
+                        <div className="dashboard-card-top">
+                          <span className="dashboard-participant-badge">{entry.participantName}</span>
+                          <button className="mobile-card-menu" type="button" aria-label={`${entry.stockName} 자세히 보기`}>
+                            <UiIcon name="more" />
+                          </button>
+                        </div>
                         <strong>{entry.stockName}</strong>
-                        <em className={returnClass(getDashboardReturn(entry))}>
+                        <span className="dashboard-stock-code">{formatStockCode(entry.stockCode)}</span>
+                        <div className="dashboard-card-divider" />
+                        <div className="dashboard-card-price-row">
+                          <span>현재가</span>
+                          <div>
+                            <em className={returnClass(getDashboardReturn(entry))}>
+                              {formatPercent(getDashboardReturn(entry))}
+                            </em>
+                            <strong>{formatWon(getDashboardPrice(entry))}</strong>
+                          </div>
+                        </div>
+                        <em className={`dashboard-card-simple-return ${returnClass(getDashboardReturn(entry))}`}>
                           {formatPercent(getDashboardReturn(entry))}
                         </em>
                       </article>
@@ -383,6 +437,18 @@ export default function PublicApp() {
                       </div>
                     ) : null}
                   </div>
+
+                  <section className="mobile-missing-section" aria-label="미참가자">
+                    <h2>미참가자</h2>
+                    <div className="mobile-missing-card">
+                      {visibleMissingParticipants.length > 0 ? (
+                        visibleMissingParticipants.map((name) => <span key={name}>{name}</span>)
+                      ) : (
+                        <span>없음</span>
+                      )}
+                      {hiddenMissingCount > 0 ? <button type="button">+ {hiddenMissingCount}명 더보기</button> : null}
+                    </div>
+                  </section>
                 </section>
               ) : null}
 
@@ -801,5 +867,99 @@ function RankingTopbarGroup({
       </ol>
       {items.length === 0 ? <p className="muted">확정 결과 없음</p> : null}
     </div>
+  );
+}
+
+function MobileTopCard({
+  title,
+  icon,
+  variant,
+  items,
+  valueKey
+}: {
+  title: string;
+  icon: "calendar" | "trend";
+  variant: "monthly" | "cumulative";
+  items: Array<{ rank: number; participantName: string; [key: string]: unknown }>;
+  valueKey: string;
+}) {
+  return (
+    <article className={`mobile-top-card ${variant}`}>
+      <div className="mobile-top-heading">
+        <UiIcon name={icon} />
+        <h3>{title}</h3>
+      </div>
+      <ol>
+        {items.map((item) => (
+          <li key={`${title}-${item.rank}-${item.participantName}`}>
+            <strong>{item.rank}</strong>
+            <span>{item.participantName}</span>
+            <em className={returnClass(Number(item[valueKey]))}>{formatPercent(Number(item[valueKey]))}</em>
+          </li>
+        ))}
+      </ol>
+      {items.length === 0 ? <p>순위 데이터가 없습니다.</p> : null}
+    </article>
+  );
+}
+
+function UiIcon({ name }: { name: PublicNavIcon | "admin" | "calendar" | "trend" | "user" | "more" }) {
+  if (name === "dashboard") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M4 4h6v7H4zM14 4h6v7h-6zM4 15h6v5H4zM14 15h6v5h-6z" />
+      </svg>
+    );
+  }
+
+  if (name === "quotes" || name === "trend" || name === "cumulative") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M4 17l5-5 4 4 7-9" />
+        <path d="M15 7h5v5" />
+      </svg>
+    );
+  }
+
+  if (name === "monthly" || name === "calendar") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M7 3v4M17 3v4M4 8h16M5 5h14v15H5z" />
+        <path d="M8 12h2M12 12h2M16 12h2M8 16h2M12 16h2" />
+      </svg>
+    );
+  }
+
+  if (name === "entries") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M5 5h14v5H5zM5 14h14v5H5z" />
+        <path d="M8 10v4M16 10v4" />
+      </svg>
+    );
+  }
+
+  if (name === "admin") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M12 3l7 3v5c0 4.5-2.8 7.9-7 10-4.2-2.1-7-5.5-7-10V6z" />
+        <path d="M9 12l2 2 4-5" />
+      </svg>
+    );
+  }
+
+  if (name === "more") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M12 5.5v.1M12 12v.1M12 18.5v.1" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8z" />
+      <path d="M4 21a8 8 0 0 1 16 0" />
+    </svg>
   );
 }
