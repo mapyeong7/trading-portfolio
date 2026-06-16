@@ -52,12 +52,46 @@ export function getEntryPreview(entry: Entry): EntryPreview {
 
 export function buildMonthlyRanking(entries: EntryPreview[]): MonthlyRankingItem[] {
   return entries
-    .filter((entry) => entry.finalReturnPercent !== null)
-    .sort((a, b) => b.finalReturnPercent! - a.finalReturnPercent!)
-    .map((entry, index) => ({
-      ...entry,
+    .map((entry) => {
+      if (
+        entry.finalReturnPercent !== null &&
+        entry.finalExitDate &&
+        entry.finalExitClose !== null
+      ) {
+        return {
+          entry,
+          rankingExitDate: entry.finalExitDate,
+          rankingExitClose: entry.finalExitClose,
+          rankingReturnPercent: entry.finalReturnPercent,
+          rankingSource: "final" as const
+        };
+      }
+
+      if (entry.currentPrice !== null) {
+        const rankingReturnPercent =
+          entry.currentReturnPercent ?? calculateReturnPercent(entry.buyClose, entry.currentPrice);
+
+        return {
+          entry,
+          rankingExitDate: entry.currentPriceAt ? entry.currentPriceAt.slice(0, 10) : null,
+          rankingExitClose: entry.currentPrice,
+          rankingReturnPercent,
+          rankingSource: "current" as const
+        };
+      }
+
+      return null;
+    })
+    .filter((item): item is NonNullable<typeof item> => item !== null)
+    .sort((a, b) => b.rankingReturnPercent - a.rankingReturnPercent)
+    .map((item, index) => ({
+      ...item.entry,
       rank: index + 1,
-      officialReturnPercent: entry.finalReturnPercent!
+      officialReturnPercent: item.rankingReturnPercent,
+      rankingExitDate: item.rankingExitDate,
+      rankingExitClose: item.rankingExitClose,
+      rankingReturnPercent: item.rankingReturnPercent,
+      rankingSource: item.rankingSource
     }));
 }
 

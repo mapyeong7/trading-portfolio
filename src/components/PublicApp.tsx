@@ -160,10 +160,10 @@ export default function PublicApp() {
             entry.stockName,
             entry.stockCode,
             entry.buyDate,
-            entry.finalExitDate,
-            entry.finalExitClose,
-            entry.sellDate ? "매도 확정" : "월말 확정",
-            entry.officialReturnPercent
+            entry.rankingExitDate,
+            entry.rankingExitClose,
+            entry.rankingSource === "final" ? "확정" : "현재가",
+            entry.rankingReturnPercent
           ],
           monthlyFindQuery
         )
@@ -345,7 +345,7 @@ export default function PublicApp() {
                 관리자 모드
               </a>
 
-              <p className="side-note">공식 순위는 결과 확정 후 반영됩니다.</p>
+              <p className="side-note">미확정 순위는 현재가, 확정 순위는 확정일 종가 기준입니다.</p>
             </aside>
 
             <div className="content-layer">
@@ -479,13 +479,14 @@ export default function PublicApp() {
                     </em>
                     <p>{entry.stockName}</p>
                     <small>
-                      매수 {entry.buyDate} · {entry.sellDate ? "매도 확정" : "월말 확정"}
+                      {entry.rankingSource === "final" ? "확정" : "현재가"} {entry.rankingExitDate ?? "-"} · 매수{" "}
+                      {entry.buyDate}
                     </small>
                   </article>
                 ))}
                 {data.monthlyRanking.length === 0 || filteredMonthlyRanking.length === 0 ? (
                   <div className="empty-state compact">
-                    <h3>{data.monthlyRanking.length === 0 ? "아직 확정된 월간 순위가 없습니다." : "검색 결과가 없습니다."}</h3>
+                    <h3>{data.monthlyRanking.length === 0 ? "현재가가 수집된 월간 순위가 없습니다." : "검색 결과가 없습니다."}</h3>
                   </div>
                 ) : null}
               </div>
@@ -497,9 +498,9 @@ export default function PublicApp() {
                       <th>참가자</th>
                       <th>종목</th>
                       <th>매수</th>
-                      <th>기준 종료</th>
-                      <th>매도</th>
-                      <th>공식 수익률</th>
+                      <th>순위 기준</th>
+                      <th>상태</th>
+                      <th>수익률</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -516,10 +517,10 @@ export default function PublicApp() {
                           <span className="subtext">{formatMoney(entry.buyClose)}</span>
                         </td>
                         <td>
-                          {entry.finalExitDate}
-                          <span className="subtext">{formatMoney(entry.finalExitClose)}</span>
+                          {entry.rankingExitDate ?? "-"}
+                          <span className="subtext">{formatMoney(entry.rankingExitClose)}</span>
                         </td>
-                        <td>{entry.sellDate ? "매도 확정" : "월말 확정"}</td>
+                        <td>{entry.rankingSource === "final" ? "결과 확정" : "현재가 기준"}</td>
                         <td className={returnClass(entry.officialReturnPercent)}>
                           {formatPercent(entry.officialReturnPercent)}
                         </td>
@@ -529,7 +530,7 @@ export default function PublicApp() {
                       <tr>
                         <td colSpan={7} className="empty-cell">
                           {data.monthlyRanking.length === 0
-                            ? "아직 확정된 월간 순위가 없습니다."
+                            ? "현재가가 수집된 월간 순위가 없습니다."
                             : "검색 결과가 없습니다."}
                         </td>
                       </tr>

@@ -74,17 +74,40 @@ describe("contest calculations", () => {
     expect(preview.previewReturnPercent).toBe(12);
   });
 
-  it("builds official monthly ranking from finalized entries only", () => {
+  it("builds monthly ranking from finalized returns and current prices", () => {
     const finalized = getEntryPreview({
       ...baseEntry,
+      id: 1,
+      participantName: "김확정",
+      finalExitDate: "2026-06-16",
+      finalExitClose: 112,
       finalReturnPercent: 12,
       finalizedAt: "2026-06-30T10:00:00.000Z"
     });
-    const pending = getEntryPreview({ ...baseEntry, id: 2, participantId: 2, participantName: "박대기" });
+    const pending = getEntryPreview({
+      ...baseEntry,
+      id: 2,
+      participantId: 2,
+      participantName: "박현재",
+      currentPrice: 125,
+      currentPriceAt: "2026-06-16T08:00:00.000Z",
+      currentReturnPercent: 25
+    });
+    const noPrice = getEntryPreview({
+      ...baseEntry,
+      id: 3,
+      participantId: 3,
+      participantName: "이대기"
+    });
 
-    const ranking = buildMonthlyRanking([pending, finalized]);
-    expect(ranking).toHaveLength(1);
-    expect(ranking[0].officialReturnPercent).toBe(12);
+    const ranking = buildMonthlyRanking([pending, finalized, noPrice]);
+    expect(ranking).toHaveLength(2);
+    expect(ranking[0].participantName).toBe("박현재");
+    expect(ranking[0].officialReturnPercent).toBe(25);
+    expect(ranking[0].rankingSource).toBe("current");
+    expect(ranking[1].participantName).toBe("김확정");
+    expect(ranking[1].officialReturnPercent).toBe(12);
+    expect(ranking[1].rankingSource).toBe("final");
   });
 
   it("compounds finalized monthly returns for cumulative ranking", () => {

@@ -115,7 +115,7 @@ type HistoricalCloseSnapshot = {
   symbol: string;
 };
 
-function isKoreanDomesticCode(stockCode: string): boolean {
+export function isKoreanDomesticCode(stockCode: string): boolean {
   return /^[0-9][0-9A-Z]{5}$/.test(stockCode.trim().toUpperCase());
 }
 

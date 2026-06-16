@@ -62,6 +62,10 @@ export type EntryPreview = Entry & {
 export type MonthlyRankingItem = EntryPreview & {
   rank: number;
   officialReturnPercent: number;
+  rankingExitDate: string | null;
+  rankingExitClose: number | null;
+  rankingReturnPercent: number;
+  rankingSource: "final" | "current";
 };
 
 export type CumulativeRankingItem = {

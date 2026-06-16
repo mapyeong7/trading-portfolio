@@ -42,7 +42,13 @@ import {
   listMonths,
   listParticipants
 } from "./db";
-import { fetchHistoricalClose, fetchQuote, refreshQuotesForMonth, searchKoreanStocks } from "./quotes";
+import {
+  fetchHistoricalClose,
+  fetchQuote,
+  isKoreanDomesticCode,
+  refreshQuotesForMonth,
+  searchKoreanStocks
+} from "./quotes";
 
 type JsonBody = Record<string, unknown>;
 
@@ -115,6 +121,28 @@ function validateEntryDates(month: string, buyDate: string, sellDate: string | n
   }
 
   return null;
+}
+
+function getTodayInTimeZone(timeZone: string): string {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).formatToParts(new Date());
+  const year = parts.find((part) => part.type === "year")?.value;
+  const month = parts.find((part) => part.type === "month")?.value;
+  const day = parts.find((part) => part.type === "day")?.value;
+
+  if (!year || !month || !day) {
+    return new Date().toISOString().slice(0, 10);
+  }
+
+  return `${year}-${month}-${day}`;
+}
+
+function getFinalizeDateForStockCode(stockCode: string): string {
+  return getTodayInTimeZone(isKoreanDomesticCode(stockCode) ? "Asia/Seoul" : "America/New_York");
 }
 
 async function handleMonths(env: Env, request: Request): Promise<Response> {
@@ -661,11 +689,28 @@ async function handleAdminFinalizeEntry(env: Env, request: Request, entryId: num
     return error("이미 확정된 결과입니다.", 409);
   }
 
-  const exitDate = entry.sellDate ?? entry.monthEndDate;
-  const exitClose = entry.sellClose ?? entry.endClose;
+  let exitDate = entry.sellDate ?? entry.monthEndDate;
+  let exitClose = entry.sellClose ?? entry.endClose;
+
+  if (entry.stockCode.trim()) {
+    const finalizeDate = getFinalizeDateForStockCode(entry.stockCode);
+
+    try {
+      const close = await fetchHistoricalClose(entry.stockCode, finalizeDate);
+      exitDate = close.tradeDate;
+      exitClose = close.close;
+    } catch (caughtError) {
+      return error(
+        `확정일 종가를 조회하지 못했습니다: ${
+          caughtError instanceof Error ? caughtError.message : "종가 조회 실패"
+        }`,
+        502
+      );
+    }
+  }
 
   if (!exitDate || !isIsoDate(exitDate) || exitClose === null) {
-    return error("매도 확정가 또는 월말 종가가 있어야 결과를 확정할 수 있습니다.");
+    return error("확정일 종가 또는 수동 종료가가 있어야 결과를 확정할 수 있습니다.");
   }
 
   const finalReturnPercent = calculateReturnPercent(entry.buyClose, exitClose);

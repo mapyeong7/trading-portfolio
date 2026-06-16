@@ -451,7 +451,14 @@ export default function AdminApp() {
     try {
       const response = await finalizeEntry(entry.id);
       setEntries(response.entries);
-      setMessage(`${entry.participantName}의 결과를 확정했습니다.`);
+      const finalizedEntry = response.entries.find((item) => item.id === entry.id);
+      setMessage(
+        finalizedEntry?.finalizedAt
+          ? `${entry.participantName}의 결과를 ${finalizedEntry.finalExitDate} 종가 ${formatMoney(
+              finalizedEntry.finalExitClose
+            )} 기준으로 확정했습니다.`
+          : `${entry.participantName}의 결과를 확정했습니다.`
+      );
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "결과를 확정하지 못했습니다.");
     }
