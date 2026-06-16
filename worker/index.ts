@@ -616,6 +616,32 @@ async function handleAdminPatchEntry(env: Env, request: Request, entryId: number
   return json({ entries: await listEntries(env, entry.month) });
 }
 
+async function handleAdminDeleteEntry(env: Env, request: Request, entryId: number): Promise<Response> {
+  if (request.method !== "DELETE") {
+    return error("허용되지 않은 메서드입니다.", 405);
+  }
+
+  const { response } = await requireAccount(env, request);
+  if (response) {
+    return response;
+  }
+
+  const entry = await getEntryById(env, entryId);
+  if (!entry) {
+    return error("참가 종목을 찾을 수 없습니다.", 404);
+  }
+
+  if (entry.finalizedAt) {
+    return error("확정된 결과는 기본 삭제 화면에서 삭제할 수 없습니다.", 409);
+  }
+
+  await env.DB.prepare("DELETE FROM entries WHERE id = ?")
+    .bind(entryId)
+    .run();
+
+  return json({ entries: await listEntries(env, entry.month) });
+}
+
 async function handleAdminFinalizeEntry(env: Env, request: Request, entryId: number): Promise<Response> {
   if (request.method !== "POST") {
     return error("허용되지 않은 메서드입니다.", 405);
@@ -890,9 +916,14 @@ async function routeApi(env: Env, request: Request): Promise<Response> {
     return handleAdminFinalizeEntry(env, request, Number(finalizeMatch[1]));
   }
 
-  const patchMatch = url.pathname.match(/^\/api\/admin\/entries\/(\d+)$/);
-  if (patchMatch) {
-    return handleAdminPatchEntry(env, request, Number(patchMatch[1]));
+  const entryMatch = url.pathname.match(/^\/api\/admin\/entries\/(\d+)$/);
+  if (entryMatch) {
+    const entryId = Number(entryMatch[1]);
+    if (request.method === "DELETE") {
+      return handleAdminDeleteEntry(env, request, entryId);
+    }
+
+    return handleAdminPatchEntry(env, request, entryId);
   }
 
   return error("API 경로를 찾을 수 없습니다.", 404);

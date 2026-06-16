@@ -135,6 +135,12 @@ export function updateEntry(payload: EntryPayload): Promise<Pick<AdminBootstrapR
   });
 }
 
+export function deleteEntry(id: number): Promise<Pick<AdminBootstrapResponse, "entries">> {
+  return request(`/api/admin/entries/${id}`, {
+    method: "DELETE"
+  });
+}
+
 export function finalizeEntry(id: number): Promise<Pick<AdminBootstrapResponse, "entries">> {
   return request(`/api/admin/entries/${id}/finalize`, {
     method: "POST",

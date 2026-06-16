@@ -13,6 +13,7 @@ import type {
 import {
   checkQuote,
   createEntry,
+  deleteEntry,
   deleteParticipant,
   finalizeEntry,
   getAdminBootstrap,
@@ -453,6 +454,39 @@ export default function AdminApp() {
       setMessage(`${entry.participantName}의 결과를 확정했습니다.`);
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "결과를 확정하지 못했습니다.");
+    }
+  }
+
+  async function handleDeleteEntry(entry: EntryPreview) {
+    if (entry.finalizedAt) {
+      setError("확정된 결과는 기본 삭제 화면에서 삭제할 수 없습니다.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `${entry.participantName}의 ${entry.stockName} 참가 종목을 삭제할까요? 삭제하면 이번 기준월 참가 종목 목록에서 제거됩니다.`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setError("");
+    try {
+      const response = await deleteEntry(entry.id);
+      setEntries(response.entries);
+      if (entryDraft.id === entry.id) {
+        setEntryDraft(emptyEntryDraft(selectedMonthObject));
+        setEntryParticipantQuery("");
+        setQuoteCheck(null);
+        setHistoricalCloseCheck(null);
+        setExitCloseCheck(null);
+        setStockSearchResults([]);
+        setStockSearchMessage("");
+      }
+      setMessage(`${entry.participantName}의 참가 종목을 삭제했습니다.`);
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "참가 종목을 삭제하지 못했습니다.");
     }
   }
 
@@ -1506,6 +1540,14 @@ export default function AdminApp() {
                     disabled={Boolean(entry.finalizedAt)}
                   >
                     결과 확정
+                  </button>
+                  <button
+                    className="small-button danger-button"
+                    type="button"
+                    onClick={() => void handleDeleteEntry(entry)}
+                    disabled={Boolean(entry.finalizedAt)}
+                  >
+                    삭제
                   </button>
                 </div>
               </article>
