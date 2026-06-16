@@ -115,6 +115,10 @@ type HistoricalCloseSnapshot = {
   symbol: string;
 };
 
+function isKoreanDomesticCode(stockCode: string): boolean {
+  return /^[0-9][0-9A-Z]{5}$/.test(stockCode.trim().toUpperCase());
+}
+
 function asPositiveNumber(value: unknown): number | null {
   const numberValue =
     typeof value === "string"
@@ -130,7 +134,7 @@ export function buildYahooSymbolCandidates(stockCode: string): string[] {
     return [];
   }
 
-  if (/^\d{6}$/.test(normalized)) {
+  if (isKoreanDomesticCode(normalized)) {
     return [`${normalized}.KS`, `${normalized}.KQ`];
   }
 
@@ -140,7 +144,7 @@ export function buildYahooSymbolCandidates(stockCode: string): string[] {
 export function buildNasdaqQuoteCandidates(stockCode: string): Array<{ symbol: string; assetClass: "stocks" | "etf" }> {
   const normalized = stockCode.trim().toUpperCase();
 
-  if (!normalized || /^\d{6}$/.test(normalized)) {
+  if (!normalized || isKoreanDomesticCode(normalized)) {
     return [];
   }
 
@@ -161,7 +165,7 @@ export function normalizeKoreanStockSearchItems(payload: NaverStockSearchRespons
     const name = item.name?.trim() ?? "";
 
     if (
-      !/^\d{6}$/.test(code) ||
+      !isKoreanDomesticCode(code) ||
       !name ||
       seenCodes.has(code) ||
       item.nationCode !== "KOR" ||
@@ -325,11 +329,12 @@ export async function searchKoreanStocks(query: string, fetcher: typeof fetch = 
     return [];
   }
 
-  if (/^\d{6}$/.test(normalized)) {
+  if (isKoreanDomesticCode(normalized)) {
+    const code = normalized.toUpperCase();
     return [
       {
-        code: normalized,
-        name: normalized,
+        code,
+        name: code,
         market: "직접입력"
       }
     ];
@@ -358,9 +363,9 @@ async function fetchNaverHistoricalClose(
   date: string,
   fetcher: typeof fetch
 ): Promise<HistoricalCloseSnapshot> {
-  const normalized = stockCode.trim();
+  const normalized = stockCode.trim().toUpperCase();
 
-  if (!/^\d{6}$/.test(normalized)) {
+  if (!isKoreanDomesticCode(normalized)) {
     throw new Error("국내 6자리 종목코드가 아닙니다.");
   }
 
@@ -472,7 +477,7 @@ export async function fetchHistoricalClose(
     throw new Error("매수일은 YYYY-MM-DD 형식이어야 합니다.");
   }
 
-  if (/^\d{6}$/.test(normalized)) {
+  if (isKoreanDomesticCode(normalized)) {
     return fetchNaverHistoricalClose(normalized, date, fetcher);
   }
 
@@ -480,9 +485,9 @@ export async function fetchHistoricalClose(
 }
 
 async function fetchNaverQuote(stockCode: string, fetcher: typeof fetch): Promise<QuoteSnapshot> {
-  const normalized = stockCode.trim();
+  const normalized = stockCode.trim().toUpperCase();
 
-  if (!/^\d{6}$/.test(normalized)) {
+  if (!isKoreanDomesticCode(normalized)) {
     throw new Error("국내 6자리 종목코드가 아닙니다.");
   }
 
@@ -582,7 +587,7 @@ async function fetchNasdaqQuote(stockCode: string, fetcher: typeof fetch): Promi
 export async function fetchQuote(stockCode: string, fetcher: typeof fetch = fetch): Promise<QuoteSnapshot> {
   const providerErrors: string[] = [];
 
-  if (/^\d{6}$/.test(stockCode.trim())) {
+  if (isKoreanDomesticCode(stockCode)) {
     try {
       return await fetchNaverQuote(stockCode, fetcher);
     } catch (caughtError) {
@@ -639,7 +644,7 @@ export async function fetchQuote(stockCode: string, fetcher: typeof fetch = fetc
     }
   }
 
-  if (!/^\d{6}$/.test(stockCode.trim())) {
+  if (!isKoreanDomesticCode(stockCode)) {
     try {
       return await fetchNasdaqQuote(stockCode, fetcher);
     } catch (caughtError) {

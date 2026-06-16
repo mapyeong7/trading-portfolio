@@ -18,6 +18,7 @@ describe("quote providers", () => {
       { symbol: "SPY", assetClass: "etf" }
     ]);
     expect(buildNasdaqQuoteCandidates("005930")).toEqual([]);
+    expect(buildNasdaqQuoteCandidates("0193W0")).toEqual([]);
   });
 
   it("falls back to Nasdaq when Yahoo is rate limited", async () => {
@@ -115,12 +116,21 @@ describe("quote providers", () => {
             name: "Apple",
             nationCode: "USA",
             category: "stock"
+          },
+          {
+            code: "0193W0",
+            name: "KODEX 삼성전자단일종목레버리지",
+            typeCode: "KOSPI",
+            typeName: "코스피",
+            nationCode: "KOR",
+            category: "stock"
           }
         ]
       })
     ).toEqual([
       { code: "005930", name: "삼성전자", market: "코스피" },
-      { code: "005935", name: "삼성전자우", market: "코스피" }
+      { code: "005935", name: "삼성전자우", market: "코스피" },
+      { code: "0193W0", name: "KODEX 삼성전자단일종목레버리지", market: "코스피" }
     ]);
   });
 
@@ -146,6 +156,12 @@ describe("quote providers", () => {
     ]);
   });
 
+  it("accepts Korean alphanumeric ETF codes as direct stock search input", async () => {
+    await expect(searchKoreanStocks("0193w0")).resolves.toEqual([
+      { code: "0193W0", name: "0193W0", market: "직접입력" }
+    ]);
+  });
+
   it("fetches Korean historical close for a buy date", async () => {
     const fetcher: typeof fetch = async (input) => {
       expect(String(input)).toContain("symbol=005930");
@@ -162,6 +178,25 @@ describe("quote providers", () => {
       tradeDate: "2026-06-05",
       source: "Naver Finance",
       symbol: "005930"
+    });
+  });
+
+  it("fetches Korean alphanumeric ETF historical close through Naver", async () => {
+    const fetcher: typeof fetch = async (input) => {
+      expect(String(input)).toContain("symbol=0193W0");
+      expect(String(input)).toContain("startTime=20260616");
+
+      return new Response(`
+        [['날짜', '시가', '고가', '저가', '종가', '거래량', '외국인소진율'],
+        ["20260616", 26620, 27025, 25200, 26660, 76278466, 3.78]]
+      `);
+    };
+
+    await expect(fetchHistoricalClose("0193w0", "2026-06-16", fetcher)).resolves.toEqual({
+      close: 26660,
+      tradeDate: "2026-06-16",
+      source: "Naver Finance",
+      symbol: "0193W0"
     });
   });
 

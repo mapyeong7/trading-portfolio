@@ -1267,7 +1267,7 @@ export default function AdminApp() {
                       <input
                         value={entryDraft.stockCode}
                         disabled={entryDraft.stockCodeUnavailable}
-                        placeholder={entryDraft.stockCodeUnavailable ? "코드 없음" : "005930, AAPL, SPY 등"}
+                        placeholder={entryDraft.stockCodeUnavailable ? "코드 없음" : "005930, 0193W0, AAPL 등"}
                         onChange={(event) => {
                           setEntryDraft({ ...entryDraft, stockCode: event.target.value });
                           setQuoteCheck(null);
