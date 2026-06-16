@@ -169,8 +169,8 @@ describe("quote providers", () => {
     const fetcher: typeof fetch = async (input) => {
       const url = String(input);
       expect(url).toContain("api.nasdaq.com/api/quote/AAPL/historical");
-      expect(url).toContain("fromdate=2026-06-05");
-      expect(url).toContain("todate=2026-06-06");
+      expect(url).toContain("fromdate=2026-05-26");
+      expect(url).toContain("todate=2026-06-15");
 
       return Response.json({
         data: {
@@ -189,6 +189,35 @@ describe("quote providers", () => {
     };
 
     await expect(fetchHistoricalClose("aapl", "2026-06-05", fetcher)).resolves.toEqual({
+      close: 307.34,
+      tradeDate: "2026-06-05",
+      source: "Nasdaq",
+      symbol: "AAPL"
+    });
+  });
+
+  it("uses the previous trading day for US historical close on non-trading dates", async () => {
+    const fetcher: typeof fetch = async () =>
+      Response.json({
+        data: {
+          symbol: "AAPL",
+          tradesTable: {
+            rows: [
+              {
+                date: "06/05/2026",
+                close: "$307.34"
+              },
+              {
+                date: "06/04/2026",
+                close: "$313.29"
+              }
+            ]
+          }
+        },
+        status: { rCode: 200 }
+      });
+
+    await expect(fetchHistoricalClose("aapl", "2026-06-06", fetcher)).resolves.toEqual({
       close: 307.34,
       tradeDate: "2026-06-05",
       source: "Nasdaq",

@@ -7,6 +7,7 @@ const QUOTE_SOURCE = "Yahoo Finance";
 const NAVER_QUOTE_SOURCE = "Naver Finance";
 const NASDAQ_QUOTE_SOURCE = "Nasdaq";
 const REFRESH_CONCURRENCY = 4;
+const HISTORICAL_LOOKUP_WINDOW_DAYS = 10;
 
 type YahooChartResult = {
   meta?: {
@@ -275,6 +276,23 @@ export function parseNasdaqHistoricalCloseRows(
   return rows;
 }
 
+function selectHistoricalCloseRow(
+  rows: Array<{ tradeDate: string; close: number }>,
+  date: string
+): { tradeDate: string; close: number } | null {
+  const exactRow = rows.find((item) => item.tradeDate === date);
+
+  if (exactRow) {
+    return exactRow;
+  }
+
+  return (
+    rows
+      .filter((item) => item.tradeDate <= date)
+      .sort((left, right) => right.tradeDate.localeCompare(left.tradeDate))[0] ?? null
+  );
+}
+
 function getLastClose(data: YahooChartResult): number | null {
   const closes = data.indicators?.quote?.[0]?.close ?? [];
 
@@ -384,13 +402,14 @@ async function fetchNasdaqHistoricalClose(
 ): Promise<HistoricalCloseSnapshot> {
   const candidates = buildNasdaqQuoteCandidates(stockCode);
   const errors: string[] = [];
-  const toDate = addIsoDays(date, 1);
+  const fromDate = addIsoDays(date, -HISTORICAL_LOOKUP_WINDOW_DAYS);
+  const toDate = addIsoDays(date, HISTORICAL_LOOKUP_WINDOW_DAYS);
 
   for (const candidate of candidates) {
     const response = await fetcher(
       `https://api.nasdaq.com/api/quote/${encodeURIComponent(
         candidate.symbol
-      )}/historical?assetclass=${candidate.assetClass}&fromdate=${date}&todate=${toDate}&limit=9999`,
+      )}/historical?assetclass=${candidate.assetClass}&fromdate=${fromDate}&todate=${toDate}&limit=9999`,
       {
         headers: {
           Accept: "application/json, text/plain, */*",
@@ -420,10 +439,10 @@ async function fetchNasdaqHistoricalClose(
       continue;
     }
 
-    const row = parseNasdaqHistoricalCloseRows(payload).find((item) => item.tradeDate === date);
+    const row = selectHistoricalCloseRow(parseNasdaqHistoricalCloseRows(payload), date);
 
     if (!row) {
-      errors.push(`${candidate.symbol}/${candidate.assetClass}: ${date} 종가 없음`);
+      errors.push(`${candidate.symbol}/${candidate.assetClass}: ${date} 또는 직전 거래일 종가 없음`);
       continue;
     }
 
