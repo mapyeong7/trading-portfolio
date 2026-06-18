@@ -2,10 +2,12 @@ import { useEffect, useMemo, useState } from "react";
 import type { EntryPreview, LeaderboardResponse } from "../../shared/types";
 import { getEntries, getLeaderboard } from "../lib/api";
 import { formatDateTime, formatMoney, formatPercent, formatStockCode, returnClass } from "../lib/format";
+import AppIcon, { type AppIconName } from "./AppIcon";
 import MemoText from "./MemoText";
+import MobileTopCard from "./MobileTopCard";
 
 type PublicView = "dashboard" | "quotes" | "monthly" | "cumulative" | "entries";
-type PublicNavIcon = "dashboard" | "quotes" | "monthly" | "cumulative" | "entries";
+type PublicNavIcon = Extract<AppIconName, "dashboard" | "quotes" | "monthly" | "cumulative" | "entries">;
 
 const publicNavItems: Array<{
   id: PublicView;
@@ -275,7 +277,7 @@ export default function PublicApp() {
           </div>
         </div>
         <a className="public-header-admin-link" href="/admin" aria-label="관리자 화면으로 이동">
-          <UiIcon name="admin" />
+          <AppIcon name="admin" />
           <span>관리자</span>
         </a>
         {data?.selectedMonth ? (
@@ -356,7 +358,7 @@ export default function PublicApp() {
                   >
                     <span className="side-menu-eyebrow">{item.eyebrow}</span>
                     <span className="mobile-nav-icon" aria-hidden="true">
-                      <UiIcon name={item.icon} />
+                      <AppIcon name={item.icon} />
                     </span>
                     <span className="side-menu-label">{item.label}</span>
                   </button>
@@ -410,7 +412,7 @@ export default function PublicApp() {
                         <div className="dashboard-card-top">
                           <span className="dashboard-participant-badge">{entry.participantName}</span>
                           <button className="mobile-card-menu" type="button" aria-label={`${entry.stockName} 자세히 보기`}>
-                            <UiIcon name="more" />
+                            <AppIcon name="more" />
                           </button>
                         </div>
                         <strong>{entry.stockName}</strong>
@@ -867,99 +869,5 @@ function RankingTopbarGroup({
       </ol>
       {items.length === 0 ? <p className="muted">확정 결과 없음</p> : null}
     </div>
-  );
-}
-
-function MobileTopCard({
-  title,
-  icon,
-  variant,
-  items,
-  valueKey
-}: {
-  title: string;
-  icon: "calendar" | "trend";
-  variant: "monthly" | "cumulative";
-  items: Array<{ rank: number; participantName: string; [key: string]: unknown }>;
-  valueKey: string;
-}) {
-  return (
-    <article className={`mobile-top-card ${variant}`}>
-      <div className="mobile-top-heading">
-        <UiIcon name={icon} />
-        <h3>{title}</h3>
-      </div>
-      <ol>
-        {items.map((item) => (
-          <li key={`${title}-${item.rank}-${item.participantName}`}>
-            <strong>{item.rank}</strong>
-            <span>{item.participantName}</span>
-            <em className={returnClass(Number(item[valueKey]))}>{formatPercent(Number(item[valueKey]))}</em>
-          </li>
-        ))}
-      </ol>
-      {items.length === 0 ? <p>순위 데이터가 없습니다.</p> : null}
-    </article>
-  );
-}
-
-function UiIcon({ name }: { name: PublicNavIcon | "admin" | "calendar" | "trend" | "user" | "more" }) {
-  if (name === "dashboard") {
-    return (
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M4 4h6v7H4zM14 4h6v7h-6zM4 15h6v5H4zM14 15h6v5h-6z" />
-      </svg>
-    );
-  }
-
-  if (name === "quotes" || name === "trend" || name === "cumulative") {
-    return (
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M4 17l5-5 4 4 7-9" />
-        <path d="M15 7h5v5" />
-      </svg>
-    );
-  }
-
-  if (name === "monthly" || name === "calendar") {
-    return (
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M7 3v4M17 3v4M4 8h16M5 5h14v15H5z" />
-        <path d="M8 12h2M12 12h2M16 12h2M8 16h2M12 16h2" />
-      </svg>
-    );
-  }
-
-  if (name === "entries") {
-    return (
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M5 5h14v5H5zM5 14h14v5H5z" />
-        <path d="M8 10v4M16 10v4" />
-      </svg>
-    );
-  }
-
-  if (name === "admin") {
-    return (
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M12 3l7 3v5c0 4.5-2.8 7.9-7 10-4.2-2.1-7-5.5-7-10V6z" />
-        <path d="M9 12l2 2 4-5" />
-      </svg>
-    );
-  }
-
-  if (name === "more") {
-    return (
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M12 5.5v.1M12 12v.1M12 18.5v.1" />
-      </svg>
-    );
-  }
-
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8z" />
-      <path d="M4 21a8 8 0 0 1 16 0" />
-    </svg>
   );
 }

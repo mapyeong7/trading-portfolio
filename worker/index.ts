@@ -1,14 +1,7 @@
-import {
-  buildCumulativeRanking,
-  buildMonthlyRanking,
-  calculateReturnPercent
-} from "../shared/calculations";
+import { calculateReturnPercent } from "../shared/calculations";
 import type {
   AdminBootstrapResponse,
-  ApiError,
-  ContestMonth,
   HistoricalCloseResponse,
-  LeaderboardResponse,
   MonthStatus,
   QuoteCheckResponse,
   QuoteRefreshResponse,
@@ -29,7 +22,6 @@ import {
   buildSessionCookie,
   createSessionToken,
   deleteCurrentSession,
-  getSessionAccount,
   hashPassword,
   sha256Base64Url,
   type Env,
@@ -51,53 +43,10 @@ import {
   refreshQuotesForMonth,
   searchKoreanStocks
 } from "./quotes";
-
-type JsonBody = Record<string, unknown>;
-
-class RequestError extends Error {
-  status: number;
-
-  constructor(message: string, status = 400) {
-    super(message);
-    this.status = status;
-  }
-}
-
-function json<T>(data: T, status = 200, headers?: HeadersInit): Response {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: {
-      "Content-Type": "application/json; charset=utf-8",
-      ...headers
-    }
-  });
-}
-
-function error(message: string, status = 400): Response {
-  return json<ApiError>({ error: message }, status);
-}
-
-async function readJson(request: Request): Promise<JsonBody> {
-  if (!request.headers.get("Content-Type")?.includes("application/json")) {
-    return {};
-  }
-
-  try {
-    return (await request.json()) as JsonBody;
-  } catch {
-    return {};
-  }
-}
-
-async function requireAccount(env: Env, request: Request) {
-  const account = await getSessionAccount(env, request);
-
-  if (!account) {
-    return { account: null, response: error("로그인이 필요합니다.", 401) };
-  }
-
-  return { account, response: null };
-}
+import { error, json, readJson, RequestError, requireAccount } from "./http";
+import { isMonthStatus, selectContestMonth } from "./months";
+import { handleEntries, handleLeaderboard, handleMonths } from "./public-api";
+import { dispatchApiRoute, type DynamicApiRoute, type StaticApiRoute } from "./router";
 
 function requirePositiveNumber(value: unknown, label: string): number {
   const numberValue = Number(value);
@@ -145,86 +94,6 @@ function getTodayInTimeZone(timeZone: string): string {
 
 function getFinalizeDateForStockCode(stockCode: string): string {
   return getTodayInTimeZone(isKoreanDomesticCode(stockCode) ? "Asia/Seoul" : "America/New_York");
-}
-
-function isMonthStatus(value: unknown): value is MonthStatus {
-  return value === "draft" || value === "open" || value === "finalized";
-}
-
-function getPublicMonths(months: ContestMonth[]): ContestMonth[] {
-  return months.filter((month) => month.status !== "draft");
-}
-
-function selectContestMonth(months: ContestMonth[], requestedMonth: string | null): ContestMonth | null {
-  return (
-    (requestedMonth ? months.find((month) => month.month === requestedMonth) : undefined) ??
-    months.find((month) => month.status === "open") ??
-    months[0] ??
-    null
-  );
-}
-
-async function handleMonths(env: Env, request: Request): Promise<Response> {
-  if (request.method !== "GET") {
-    return error("허용되지 않은 메서드입니다.", 405);
-  }
-
-  return json({ months: getPublicMonths(await listMonths(env)) });
-}
-
-async function handleEntries(env: Env, request: Request, url: URL): Promise<Response> {
-  if (request.method !== "GET") {
-    return error("허용되지 않은 메서드입니다.", 405);
-  }
-
-  const month = url.searchParams.get("month") ?? undefined;
-
-  if (month && !isMonthKey(month)) {
-    return error("month는 YYYY-MM 형식이어야 합니다.");
-  }
-
-  const publicMonths = getPublicMonths(await listMonths(env));
-  const publicMonthKeys = new Set(publicMonths.map((item) => item.month));
-
-  if (month) {
-    return json({ entries: publicMonthKeys.has(month) ? await listEntries(env, month) : [] });
-  }
-
-  const publicEntries = (await listEntries(env)).filter((entry) => publicMonthKeys.has(entry.month));
-  return json({ entries: publicEntries });
-}
-
-async function handleLeaderboard(env: Env, request: Request, url: URL): Promise<Response> {
-  if (request.method !== "GET") {
-    return error("허용되지 않은 메서드입니다.", 405);
-  }
-
-  const months = getPublicMonths(await listMonths(env));
-  const requestedMonth = url.searchParams.get("month");
-  const selectedMonth = selectContestMonth(months, requestedMonth);
-  const selectedMonthEntries = selectedMonth ? await listEntries(env, selectedMonth.month) : [];
-  const publicMonthKeys = new Set(months.map((month) => month.month));
-  const allEntries = (await listEntries(env)).filter((entry) => publicMonthKeys.has(entry.month));
-  const cumulativeEntries = selectedMonth
-    ? allEntries.filter((entry) => entry.month <= selectedMonth.month)
-    : allEntries;
-  const activeParticipants = (await listParticipants(env)).filter((participant) => participant.active);
-  const submittedParticipantIds = new Set(selectedMonthEntries.map((entry) => entry.participantId));
-  const missingParticipantNames = activeParticipants
-    .filter((participant) => !submittedParticipantIds.has(participant.id))
-    .map((participant) => participant.name);
-
-  const response: LeaderboardResponse = {
-    selectedMonth,
-    months,
-    participantCount: activeParticipants.length,
-    missingParticipantNames,
-    entries: selectedMonthEntries,
-    monthlyRanking: buildMonthlyRanking(selectedMonthEntries),
-    cumulativeRanking: buildCumulativeRanking(cumulativeEntries)
-  };
-
-  return json(response);
 }
 
 async function handleLogin(env: Env, request: Request): Promise<Response> {
@@ -942,90 +811,49 @@ async function handleAdminStockSearch(env: Env, request: Request, url: URL): Pro
   }
 }
 
-async function routeApi(env: Env, request: Request): Promise<Response> {
-  const url = new URL(request.url);
+const staticApiRoutes: StaticApiRoute[] = [
+  { pathname: "/api/months", handle: (env, request) => handleMonths(env, request) },
+  { pathname: "/api/entries", handle: handleEntries },
+  { pathname: "/api/leaderboard", handle: handleLeaderboard },
+  { pathname: "/api/auth/login", handle: (env, request) => handleLogin(env, request) },
+  { pathname: "/api/auth/logout", handle: (env, request) => handleLogout(env, request) },
+  { pathname: "/api/admin/me", handle: (env, request) => handleAdminMe(env, request) },
+  { pathname: "/api/admin/bootstrap", handle: handleAdminBootstrap },
+  { pathname: "/api/admin/accounts", handle: (env, request) => handleAdminAccounts(env, request) },
+  { pathname: "/api/admin/participants", handle: (env, request) => handleAdminParticipants(env, request) },
+  { pathname: "/api/admin/months", handle: (env, request) => handleAdminMonths(env, request) },
+  { pathname: "/api/admin/entries", handle: (env, request) => handleAdminCreateEntry(env, request) },
+  { pathname: "/api/admin/quotes/refresh", handle: (env, request) => handleAdminRefreshQuotes(env, request) },
+  { pathname: "/api/admin/quotes/check", handle: (env, request) => handleAdminCheckQuote(env, request) },
+  {
+    pathname: "/api/admin/quotes/historical-close",
+    handle: (env, request) => handleAdminHistoricalClose(env, request)
+  },
+  { pathname: "/api/admin/stocks/search", handle: handleAdminStockSearch }
+];
 
-  if (url.pathname === "/api/months") {
-    return handleMonths(env, request);
-  }
-
-  if (url.pathname === "/api/entries") {
-    return handleEntries(env, request, url);
-  }
-
-  if (url.pathname === "/api/leaderboard") {
-    return handleLeaderboard(env, request, url);
-  }
-
-  if (url.pathname === "/api/auth/login") {
-    return handleLogin(env, request);
-  }
-
-  if (url.pathname === "/api/auth/logout") {
-    return handleLogout(env, request);
-  }
-
-  if (url.pathname === "/api/admin/me") {
-    return handleAdminMe(env, request);
-  }
-
-  if (url.pathname === "/api/admin/bootstrap") {
-    return handleAdminBootstrap(env, request, url);
-  }
-
-  if (url.pathname === "/api/admin/accounts") {
-    return handleAdminAccounts(env, request);
-  }
-
-  if (url.pathname === "/api/admin/participants") {
-    return handleAdminParticipants(env, request);
-  }
-
-  const deleteParticipantMatch = url.pathname.match(/^\/api\/admin\/participants\/(\d+)$/);
-  if (deleteParticipantMatch) {
-    return handleAdminDeleteParticipant(env, request, Number(deleteParticipantMatch[1]));
-  }
-
-  if (url.pathname === "/api/admin/months") {
-    return handleAdminMonths(env, request);
-  }
-
-  if (url.pathname === "/api/admin/entries") {
-    return handleAdminCreateEntry(env, request);
-  }
-
-  if (url.pathname === "/api/admin/quotes/refresh") {
-    return handleAdminRefreshQuotes(env, request);
-  }
-
-  if (url.pathname === "/api/admin/quotes/check") {
-    return handleAdminCheckQuote(env, request);
-  }
-
-  if (url.pathname === "/api/admin/quotes/historical-close") {
-    return handleAdminHistoricalClose(env, request);
-  }
-
-  if (url.pathname === "/api/admin/stocks/search") {
-    return handleAdminStockSearch(env, request, url);
-  }
-
-  const finalizeMatch = url.pathname.match(/^\/api\/admin\/entries\/(\d+)\/finalize$/);
-  if (finalizeMatch) {
-    return handleAdminFinalizeEntry(env, request, Number(finalizeMatch[1]));
-  }
-
-  const entryMatch = url.pathname.match(/^\/api\/admin\/entries\/(\d+)$/);
-  if (entryMatch) {
-    const entryId = Number(entryMatch[1]);
-    if (request.method === "DELETE") {
-      return handleAdminDeleteEntry(env, request, entryId);
+const dynamicApiRoutes: DynamicApiRoute[] = [
+  {
+    pattern: /^\/api\/admin\/participants\/(\d+)$/,
+    handle: (env, request, _url, match) => handleAdminDeleteParticipant(env, request, Number(match[1]))
+  },
+  {
+    pattern: /^\/api\/admin\/entries\/(\d+)\/finalize$/,
+    handle: (env, request, _url, match) => handleAdminFinalizeEntry(env, request, Number(match[1]))
+  },
+  {
+    pattern: /^\/api\/admin\/entries\/(\d+)$/,
+    handle: (env, request, _url, match) => {
+      const entryId = Number(match[1]);
+      return request.method === "DELETE"
+        ? handleAdminDeleteEntry(env, request, entryId)
+        : handleAdminPatchEntry(env, request, entryId);
     }
-
-    return handleAdminPatchEntry(env, request, entryId);
   }
+];
 
-  return error("API 경로를 찾을 수 없습니다.", 404);
+async function routeApi(env: Env, request: Request): Promise<Response> {
+  return dispatchApiRoute(env, request, staticApiRoutes, dynamicApiRoutes);
 }
 
 export default {

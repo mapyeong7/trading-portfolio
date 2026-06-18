@@ -30,7 +30,9 @@ import {
   type EntryPayload
 } from "../lib/api";
 import { formatDateTime, formatMoney, formatPercent, formatStockCode, returnClass, toInputNumber } from "../lib/format";
+import AppIcon, { type AppIconName } from "./AppIcon";
 import MemoText from "./MemoText";
+import ParticipantPicker from "./ParticipantPicker";
 
 type Account = AdminBootstrapResponse["account"];
 
@@ -73,7 +75,7 @@ type EntryDraft = {
 };
 
 type AdminView = "entries" | "participants" | "months" | "accounts";
-type AdminNavIcon = "entries" | "participants" | "months" | "accounts" | "refresh";
+type AdminNavIcon = Extract<AppIconName, "entries" | "participants" | "months" | "accounts" | "refresh">;
 
 const currentMonth = new Date().toISOString().slice(0, 7);
 const AUTO_QUOTE_REFRESH_MS = 15 * 60 * 1000;
@@ -890,7 +892,7 @@ export default function AdminApp() {
                 >
                   <span className="admin-menu-eyebrow">{item.eyebrow}</span>
                   <span className="admin-mobile-nav-icon" aria-hidden="true">
-                    <AdminUiIcon name={item.icon} />
+                    <AppIcon name={item.icon} />
                   </span>
                   <span className="admin-menu-label">{item.label}</span>
                 </button>
@@ -903,7 +905,7 @@ export default function AdminApp() {
               >
                 <span className="admin-menu-eyebrow">Manual</span>
                 <span className="admin-mobile-nav-icon" aria-hidden="true">
-                  <AdminUiIcon name="refresh" />
+                  <AppIcon name="refresh" />
                 </span>
                 <span className="admin-menu-label">{quoteRefreshing ? "갱신 중" : "시세 갱신"}</span>
               </button>
@@ -1627,125 +1629,6 @@ export default function AdminApp() {
           </div>
         </div>
       </main>
-    </div>
-  );
-}
-
-function AdminUiIcon({ name }: { name: AdminNavIcon }) {
-  if (name === "entries") {
-    return (
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M5 5h14v5H5zM5 14h14v5H5z" />
-        <path d="M8 10v4M16 10v4" />
-      </svg>
-    );
-  }
-
-  if (name === "participants") {
-    return (
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6z" />
-        <path d="M3.5 20a5.5 5.5 0 0 1 11 0" />
-        <path d="M16 8.5a2.5 2.5 0 1 0 0-5" />
-        <path d="M17 14.5a4.5 4.5 0 0 1 3.5 4.4" />
-      </svg>
-    );
-  }
-
-  if (name === "months") {
-    return (
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M7 3v4M17 3v4M4 8h16M5 5h14v15H5z" />
-        <path d="M8 12h2M12 12h2M16 12h2M8 16h2M12 16h2" />
-      </svg>
-    );
-  }
-
-  if (name === "accounts") {
-    return (
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M12 3l7 3v5c0 4.5-2.8 7.9-7 10-4.2-2.1-7-5.5-7-10V6z" />
-        <path d="M9 12l2 2 4-5" />
-      </svg>
-    );
-  }
-
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M20 12a8 8 0 0 1-14.2 5" />
-      <path d="M4 17h5v5" />
-      <path d="M4 12a8 8 0 0 1 14.2-5" />
-      <path d="M20 7h-5V2" />
-    </svg>
-  );
-}
-
-function ParticipantPicker({
-  participants,
-  value,
-  query,
-  onQueryChange,
-  onChange
-}: {
-  participants: Participant[];
-  value: string;
-  query: string;
-  onQueryChange: (query: string) => void;
-  onChange: (participantId: string) => void;
-}) {
-  const selectedParticipant = participants.find((participant) => String(participant.id) === value) ?? null;
-  const normalizedQuery = query.trim().toLocaleLowerCase("ko-KR");
-  const filteredParticipants = participants
-    .filter((participant) => {
-      if (!normalizedQuery) {
-        return true;
-      }
-
-      return [participant.name, participant.memo].some((item) =>
-        item.toLocaleLowerCase("ko-KR").includes(normalizedQuery)
-      );
-    })
-    .slice(0, 8);
-
-  function handleQueryChange(nextQuery: string) {
-    onQueryChange(nextQuery);
-
-    const exactParticipant = participants.find((participant) => participant.name === nextQuery.trim());
-    onChange(exactParticipant ? String(exactParticipant.id) : "");
-  }
-
-  function selectParticipant(participant: Participant) {
-    onChange(String(participant.id));
-    onQueryChange(participant.name);
-  }
-
-  return (
-    <div className="participant-picker">
-      <label>
-        참가자 이름
-        <input
-          type="search"
-          value={query}
-          placeholder="이름 검색"
-          autoComplete="off"
-          onChange={(event) => handleQueryChange(event.target.value)}
-        />
-      </label>
-      <div className="participant-choice-list">
-        {filteredParticipants.map((participant) => (
-          <button
-            className={`participant-choice ${selectedParticipant?.id === participant.id ? "active" : ""}`}
-            type="button"
-            key={participant.id}
-            onClick={() => selectParticipant(participant)}
-          >
-            <span>{participant.name}</span>
-            {participant.memo ? <em>{participant.memo}</em> : null}
-          </button>
-        ))}
-        {filteredParticipants.length === 0 ? <p className="picker-empty">검색 결과 없음</p> : null}
-      </div>
-      {selectedParticipant ? <p className="picker-state">선택됨: {selectedParticipant.name}</p> : null}
     </div>
   );
 }
