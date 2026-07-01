@@ -21,6 +21,7 @@ import {
   login,
   lookupHistoricalClose,
   logout,
+  reconcileMonth,
   refreshQuotes,
   saveAccount,
   saveMonth,
@@ -187,6 +188,7 @@ export default function AdminApp() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [quoteRefreshing, setQuoteRefreshing] = useState(false);
+  const [monthReconciling, setMonthReconciling] = useState(false);
   const [quoteChecking, setQuoteChecking] = useState(false);
   const [historicalCloseChecking, setHistoricalCloseChecking] = useState(false);
   const [exitCloseChecking, setExitCloseChecking] = useState(false);
@@ -424,6 +426,36 @@ export default function AdminApp() {
       setMessage("기준월을 저장했습니다.");
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "기준월을 저장하지 못했습니다.");
+    }
+  }
+
+  async function handleMonthReconcile(month: string) {
+    if (!month) {
+      setError("보정할 기준월을 선택해주세요.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `${month} 참가 종목의 월말 종가와 확정 결과를 기준월 마지막 거래일 기준으로 다시 계산할까요?`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setError("");
+    setMonthReconciling(true);
+
+    try {
+      const response = await reconcileMonth(month);
+      setEntries(response.entries);
+      setMessage(
+        `${month} 월말 기준을 재계산했습니다. 수정 ${response.updated}개, 유지 ${response.skipped}개, 확인 필요 ${response.failed}개.`
+      );
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "월말 종가를 재계산하지 못했습니다.");
+    } finally {
+      setMonthReconciling(false);
     }
   }
 
@@ -1212,6 +1244,20 @@ export default function AdminApp() {
               </button>
             ) : null}
           </form>
+          <div className="month-reconcile-card">
+            <div>
+              <strong>{selectedMonth || "기준월"} 월말 기준 재계산</strong>
+              <p>월중 매도/확정 기록은 유지하고, 월말 이후 잘못 확정된 값만 다시 맞춥니다.</p>
+            </div>
+            <button
+              className="ghost-button"
+              type="button"
+              onClick={() => void handleMonthReconcile(selectedMonth)}
+              disabled={!selectedMonth || monthReconciling}
+            >
+              {monthReconciling ? "재계산 중" : "월말 종가 재계산"}
+            </button>
+          </div>
           <div className="month-list">
             {months.map((month) => (
               <button className="month-chip" type="button" key={month.id} onClick={() => editMonth(month)}>

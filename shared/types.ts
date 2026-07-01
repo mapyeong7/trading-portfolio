@@ -130,6 +130,31 @@ export type StockSearchResponse = {
   results: StockSearchResult[];
 };
 
+export type MonthReconcileResult = {
+  entryId: number;
+  participantName: string;
+  stockName: string;
+  stockCode: string;
+  ok: boolean;
+  action: "updated" | "skipped" | "failed";
+  exitDate: string | null;
+  exitClose: number | null;
+  returnPercent: number | null;
+  finalized: boolean;
+  source: "sell" | "month-end" | "manual-month-end" | null;
+  skipReason: string | null;
+  error: string | null;
+};
+
+export type MonthReconcileResponse = {
+  month: string;
+  updated: number;
+  skipped: number;
+  failed: number;
+  results: MonthReconcileResult[];
+  entries: EntryPreview[];
+};
+
 export type LeaderboardResponse = {
   selectedMonth: ContestMonth | null;
   months: ContestMonth[];

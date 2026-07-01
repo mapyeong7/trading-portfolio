@@ -2,6 +2,7 @@ import { calculateReturnPercent } from "../shared/calculations";
 import type {
   AdminBootstrapResponse,
   HistoricalCloseResponse,
+  MonthReconcileResponse,
   MonthStatus,
   QuoteCheckResponse,
   QuoteRefreshResponse,
@@ -39,7 +40,6 @@ import {
 import {
   fetchHistoricalClose,
   fetchQuote,
-  isKoreanDomesticCode,
   refreshQuotesForMonth,
   searchKoreanStocks
 } from "./quotes";
@@ -74,26 +74,59 @@ function validateEntryDates(month: string, buyDate: string, sellDate: string | n
   return null;
 }
 
-function getTodayInTimeZone(timeZone: string): string {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit"
-  }).formatToParts(new Date());
-  const year = parts.find((part) => part.type === "year")?.value;
-  const month = parts.find((part) => part.type === "month")?.value;
-  const day = parts.find((part) => part.type === "day")?.value;
+type EntryForSnapshot = NonNullable<Awaited<ReturnType<typeof getEntryById>>>;
 
-  if (!year || !month || !day) {
-    return new Date().toISOString().slice(0, 10);
+type EntryExitSnapshot = {
+  exitDate: string;
+  exitClose: number;
+  endClose: number;
+  source: "sell" | "month-end" | "manual-month-end";
+};
+
+async function resolveEntryExitSnapshot(entry: EntryForSnapshot): Promise<EntryExitSnapshot> {
+  if (entry.sellDate) {
+    if (entry.stockCode.trim()) {
+      const close = await fetchHistoricalClose(entry.stockCode, entry.sellDate);
+      return {
+        exitDate: close.tradeDate,
+        exitClose: close.close,
+        endClose: close.close,
+        source: "sell"
+      };
+    }
+
+    if (entry.sellClose !== null) {
+      return {
+        exitDate: entry.sellDate,
+        exitClose: entry.sellClose,
+        endClose: entry.sellClose,
+        source: "sell"
+      };
+    }
+
+    throw new RequestError("매도 확정가가 없어 결과를 확정할 수 없습니다.");
   }
 
-  return `${year}-${month}-${day}`;
-}
+  if (entry.stockCode.trim()) {
+    const close = await fetchHistoricalClose(entry.stockCode, entry.monthEndDate);
+    return {
+      exitDate: close.tradeDate,
+      exitClose: close.close,
+      endClose: close.close,
+      source: "month-end"
+    };
+  }
 
-function getFinalizeDateForStockCode(stockCode: string): string {
-  return getTodayInTimeZone(isKoreanDomesticCode(stockCode) ? "Asia/Seoul" : "America/New_York");
+  if (entry.endClose !== null) {
+    return {
+      exitDate: entry.monthEndDate,
+      exitClose: entry.endClose,
+      endClose: entry.endClose,
+      source: "manual-month-end"
+    };
+  }
+
+  throw new RequestError("종목코드가 없으면 월말종가를 수동 입력해야 합니다.");
 }
 
 async function handleLogin(env: Env, request: Request): Promise<Response> {
@@ -612,44 +645,174 @@ async function handleAdminFinalizeEntry(env: Env, request: Request, entryId: num
     return error("이미 확정된 결과입니다.", 409);
   }
 
-  let exitDate = entry.sellDate ?? entry.monthEndDate;
-  let exitClose = entry.sellClose ?? entry.endClose;
+  let snapshot: EntryExitSnapshot;
 
-  if (entry.stockCode.trim()) {
-    const finalizeDate = getFinalizeDateForStockCode(entry.stockCode);
-
-    try {
-      const close = await fetchHistoricalClose(entry.stockCode, finalizeDate);
-      exitDate = close.tradeDate;
-      exitClose = close.close;
-    } catch (caughtError) {
-      return error(
-        `확정일 종가를 조회하지 못했습니다: ${
-          caughtError instanceof Error ? caughtError.message : "종가 조회 실패"
-        }`,
-        502
-      );
+  try {
+    snapshot = await resolveEntryExitSnapshot(entry);
+  } catch (caughtError) {
+    if (caughtError instanceof RequestError) {
+      return error(caughtError.message, caughtError.status);
     }
+
+    return error(
+      `기준 종가를 조회하지 못했습니다: ${
+        caughtError instanceof Error ? caughtError.message : "종가 조회 실패"
+      }`,
+      502
+    );
   }
 
-  if (!exitDate || !isIsoDate(exitDate) || exitClose === null) {
-    return error("확정일 종가 또는 수동 종료가가 있어야 결과를 확정할 수 있습니다.");
+  if (!isIsoDate(snapshot.exitDate)) {
+    return error("확정 기준일이 올바르지 않습니다.");
   }
 
-  const finalReturnPercent = calculateReturnPercent(entry.buyClose, exitClose);
+  const finalReturnPercent = calculateReturnPercent(entry.buyClose, snapshot.exitClose);
   await env.DB.prepare(
     `UPDATE entries
-     SET final_exit_date = ?,
+     SET end_close = ?,
+         final_exit_date = ?,
          final_exit_close = ?,
          final_return_percent = ?,
          finalized_at = ?,
          updated_at = CURRENT_TIMESTAMP
      WHERE id = ?`
   )
-    .bind(exitDate, exitClose, finalReturnPercent, new Date().toISOString(), entryId)
+    .bind(snapshot.endClose, snapshot.exitDate, snapshot.exitClose, finalReturnPercent, new Date().toISOString(), entryId)
     .run();
 
   return json({ entries: await listEntries(env, entry.month) });
+}
+
+function getMonthReconcileSkipReason(entry: EntryForSnapshot): string | null {
+  if (entry.sellDate || entry.sellClose !== null) {
+    return "월중 매도 기록 유지";
+  }
+
+  if (entry.finalizedAt && entry.finalExitDate && entry.finalExitDate <= entry.monthEndDate) {
+    return "기준월 안에서 확정된 기록 유지";
+  }
+
+  return null;
+}
+
+async function handleAdminReconcileMonth(env: Env, request: Request): Promise<Response> {
+  if (request.method !== "POST") {
+    return error("허용되지 않은 메서드입니다.", 405);
+  }
+
+  const { response } = await requireAccount(env, request);
+  if (response) {
+    return response;
+  }
+
+  const body = await readJson(request);
+  const month = normalizeText(body.month);
+
+  if (!isMonthKey(month)) {
+    return error("month는 YYYY-MM 형식이어야 합니다.");
+  }
+
+  const contestMonth = await getMonthByKey(env, month);
+  if (!contestMonth) {
+    return error("기준월을 찾을 수 없습니다.", 404);
+  }
+
+  const entries = await listEntries(env, month);
+  const results: MonthReconcileResponse["results"] = [];
+
+  for (const entry of entries) {
+    const skipReason = getMonthReconcileSkipReason(entry);
+
+    if (skipReason) {
+      results.push({
+        entryId: entry.id,
+        participantName: entry.participantName,
+        stockName: entry.stockName,
+        stockCode: entry.stockCode,
+        ok: true,
+        action: "skipped",
+        exitDate: entry.finalExitDate ?? entry.sellDate ?? entry.previewExitDate,
+        exitClose: entry.finalExitClose ?? entry.sellClose ?? entry.previewExitClose,
+        returnPercent: entry.finalReturnPercent ?? entry.previewReturnPercent,
+        finalized: Boolean(entry.finalizedAt),
+        source: entry.sellDate ? "sell" : null,
+        skipReason,
+        error: null
+      });
+      continue;
+    }
+
+    try {
+      const snapshot = await resolveEntryExitSnapshot(entry);
+      const returnPercent = calculateReturnPercent(entry.buyClose, snapshot.exitClose);
+
+      if (entry.finalizedAt) {
+        await env.DB.prepare(
+          `UPDATE entries
+           SET end_close = ?,
+               final_exit_date = ?,
+               final_exit_close = ?,
+               final_return_percent = ?,
+               updated_at = CURRENT_TIMESTAMP
+           WHERE id = ?`
+        )
+          .bind(snapshot.endClose, snapshot.exitDate, snapshot.exitClose, returnPercent, entry.id)
+          .run();
+      } else {
+        await env.DB.prepare(
+          `UPDATE entries
+           SET end_close = ?,
+               updated_at = CURRENT_TIMESTAMP
+           WHERE id = ?`
+        )
+          .bind(snapshot.endClose, entry.id)
+          .run();
+      }
+
+      results.push({
+        entryId: entry.id,
+        participantName: entry.participantName,
+        stockName: entry.stockName,
+        stockCode: entry.stockCode,
+        ok: true,
+        action: "updated",
+        exitDate: snapshot.exitDate,
+        exitClose: snapshot.exitClose,
+        returnPercent,
+        finalized: Boolean(entry.finalizedAt),
+        source: snapshot.source,
+        skipReason: null,
+        error: null
+      });
+    } catch (caughtError) {
+      results.push({
+        entryId: entry.id,
+        participantName: entry.participantName,
+        stockName: entry.stockName,
+        stockCode: entry.stockCode,
+        ok: false,
+        action: "failed",
+        exitDate: null,
+        exitClose: null,
+        returnPercent: null,
+        finalized: Boolean(entry.finalizedAt),
+        source: null,
+        skipReason: null,
+        error: caughtError instanceof Error ? caughtError.message.slice(0, 500) : "월말 종가 재계산 실패"
+      });
+    }
+  }
+
+  const payload: MonthReconcileResponse = {
+    month,
+    updated: results.filter((result) => result.action === "updated").length,
+    skipped: results.filter((result) => result.action === "skipped").length,
+    failed: results.filter((result) => result.action === "failed").length,
+    results,
+    entries: await listEntries(env, month)
+  };
+
+  return json(payload);
 }
 
 async function handleAdminRefreshQuotes(env: Env, request: Request): Promise<Response> {
@@ -822,6 +985,7 @@ const staticApiRoutes: StaticApiRoute[] = [
   { pathname: "/api/admin/accounts", handle: (env, request) => handleAdminAccounts(env, request) },
   { pathname: "/api/admin/participants", handle: (env, request) => handleAdminParticipants(env, request) },
   { pathname: "/api/admin/months", handle: (env, request) => handleAdminMonths(env, request) },
+  { pathname: "/api/admin/months/reconcile", handle: (env, request) => handleAdminReconcileMonth(env, request) },
   { pathname: "/api/admin/entries", handle: (env, request) => handleAdminCreateEntry(env, request) },
   { pathname: "/api/admin/quotes/refresh", handle: (env, request) => handleAdminRefreshQuotes(env, request) },
   { pathname: "/api/admin/quotes/check", handle: (env, request) => handleAdminCheckQuote(env, request) },

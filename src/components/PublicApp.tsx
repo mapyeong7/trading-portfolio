@@ -54,6 +54,21 @@ function getRankingSourceLabel(source: "final" | "sell" | "month-end" | "current
   return "현재가 기준";
 }
 
+function getMonthTabLabel(month: string, status: string): string {
+  const match = month.match(/^\d{4}-(\d{2})$/);
+  const monthLabel = match ? `${Number(match[1])}월` : month;
+
+  if (status === "finalized") {
+    return `${monthLabel} 결과`;
+  }
+
+  if (status === "open") {
+    return `${monthLabel} 진행`;
+  }
+
+  return `${monthLabel} 준비`;
+}
+
 export default function PublicApp() {
   const [data, setData] = useState<LeaderboardResponse | null>(null);
   const [allEntries, setAllEntries] = useState<EntryPreview[]>([]);
@@ -346,6 +361,22 @@ export default function PublicApp() {
               </a>
             </div>
           </section>
+        ) : null}
+
+        {data?.selectedMonth ? (
+          <div className="public-month-tabs" aria-label="기준월 선택">
+            {data.months.map((month) => (
+              <button
+                className={`public-month-tab ${selectedMonth === month.month ? "active" : ""}`}
+                type="button"
+                key={month.id}
+                onClick={() => setSelectedMonth(month.month)}
+              >
+                <span>{getMonthTabLabel(month.month, month.status)}</span>
+                <small>{month.month}</small>
+              </button>
+            ))}
+          </div>
         ) : null}
 
         {data?.selectedMonth ? (

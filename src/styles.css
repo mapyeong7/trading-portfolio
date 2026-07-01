@@ -756,6 +756,57 @@ h3 {
   min-width: 0;
 }
 
+.public-month-tabs {
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+  margin: 0 0 14px;
+  padding: 2px 0 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.public-month-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.public-month-tab {
+  display: grid;
+  gap: 2px;
+  min-width: 88px;
+  padding: 8px 11px;
+  border: 1px solid #dde3ec;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #475569;
+  text-align: left;
+  font: inherit;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+
+.public-month-tab span {
+  color: inherit;
+  font-size: 0.84rem;
+  font-weight: 860;
+}
+
+.public-month-tab small {
+  color: #64748b;
+  font-size: 0.68rem;
+  font-weight: 760;
+}
+
+.public-month-tab.active {
+  border-color: rgba(15, 118, 110, 0.28);
+  background: #ecfdf5;
+  color: #064e3b;
+}
+
+.public-month-tab.active small {
+  color: #0f766e;
+}
+
 .public-layout {
   display: grid;
   grid-template-columns: minmax(204px, 238px) minmax(0, 1fr);
@@ -808,6 +859,15 @@ h3 {
   font-size: 0.64rem;
   font-weight: 760;
   text-transform: uppercase;
+}
+
+.side-menu-item .side-menu-label,
+.side-menu-item .admin-menu-label {
+  color: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  line-height: 1.2;
+  text-transform: none;
 }
 
 .side-menu-item:hover {
@@ -2301,6 +2361,33 @@ textarea:focus {
   padding: 7px 9px;
 }
 
+.month-reconcile-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 14px 0;
+  padding: 12px;
+  border: 1px solid #dde3ec;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.month-reconcile-card strong {
+  display: block;
+  margin-bottom: 4px;
+  color: #111827;
+  font-size: 0.9rem;
+  font-weight: 860;
+}
+
+.month-reconcile-card p {
+  margin: 0;
+  color: #64748b;
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
 .month-list {
   display: flex;
   flex-wrap: wrap;
@@ -2372,6 +2459,36 @@ textarea:focus {
     justify-content: flex-start;
   }
 
+  .ranking-topbar {
+    overflow: visible;
+  }
+
+  .ranking-ticker-track {
+    display: grid;
+    width: 100%;
+    animation: none;
+  }
+
+  .ranking-ticker-set {
+    width: 100%;
+    gap: 10px;
+    overflow-x: auto;
+    padding-bottom: 2px;
+    scrollbar-width: none;
+  }
+
+  .ranking-ticker-set::-webkit-scrollbar {
+    display: none;
+  }
+
+  .ranking-ticker-set[aria-hidden="true"] {
+    display: none;
+  }
+
+  .ranking-topbar-group {
+    min-width: max-content;
+  }
+
   .ranking-topbar-group ol {
     overflow-x: auto;
     scrollbar-width: none;
@@ -2385,6 +2502,10 @@ textarea:focus {
     width: 100%;
     min-width: 0;
     max-width: none;
+  }
+
+  .public-month-tabs {
+    margin-bottom: 10px;
   }
 
   .public-layout {
@@ -2402,7 +2523,16 @@ textarea:focus {
   }
 
   .side-menu-item {
-    min-height: 54px;
+    min-height: 48px;
+    align-content: center;
+    line-height: 1.2;
+  }
+
+  .side-menu-item .side-menu-label,
+  .side-menu-item .admin-menu-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .content-layer {
@@ -3082,6 +3212,7 @@ textarea:focus {
     white-space: normal;
   }
 
+  .month-reconcile-card,
   .stock-code-actions,
   .entry-submit-bar,
   .table-actions,
@@ -3191,6 +3322,21 @@ textarea:focus {
 
   .public-shell .header-ranking-topbar {
     display: none;
+  }
+
+  .public-shell .public-month-tabs {
+    margin: 10px 19px 2px;
+    padding-bottom: 3px;
+  }
+
+  .public-shell .public-month-tab {
+    min-width: 82px;
+    padding: 7px 10px;
+    border-radius: 5px;
+  }
+
+  .public-shell .public-month-tab span {
+    font-size: 0.78rem;
   }
 
   .public-shell .public-layout {

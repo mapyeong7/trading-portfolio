@@ -4,6 +4,7 @@ import type {
   EntryPreview,
   HistoricalCloseResponse,
   LeaderboardResponse,
+  MonthReconcileResponse,
   QuoteCheckResponse,
   QuoteRefreshResponse,
   StockSearchResponse
@@ -150,6 +151,13 @@ export function finalizeEntry(id: number): Promise<Pick<AdminBootstrapResponse, 
 
 export function refreshQuotes(month?: string): Promise<QuoteRefreshResponse> {
   return request("/api/admin/quotes/refresh", {
+    method: "POST",
+    body: JSON.stringify({ month })
+  });
+}
+
+export function reconcileMonth(month: string): Promise<MonthReconcileResponse> {
+  return request("/api/admin/months/reconcile", {
     method: "POST",
     body: JSON.stringify({ month })
   });
