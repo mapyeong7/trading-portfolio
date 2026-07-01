@@ -110,6 +110,38 @@ describe("contest calculations", () => {
     expect(ranking[1].rankingSource).toBe("final");
   });
 
+  it("uses sell or month-end exits for monthly ranking before current prices", () => {
+    const monthEnd = getEntryPreview({
+      ...baseEntry,
+      id: 4,
+      participantId: 4,
+      participantName: "최월말",
+      endClose: 130,
+      currentPrice: 80,
+      currentReturnPercent: -20
+    });
+    const sold = getEntryPreview({
+      ...baseEntry,
+      id: 5,
+      participantId: 5,
+      participantName: "정매도",
+      sellDate: "2026-06-20",
+      sellClose: 118,
+      currentPrice: 150,
+      currentReturnPercent: 50
+    });
+
+    const ranking = buildMonthlyRanking([sold, monthEnd]);
+
+    expect(ranking).toHaveLength(2);
+    expect(ranking[0].participantName).toBe("최월말");
+    expect(ranking[0].officialReturnPercent).toBe(30);
+    expect(ranking[0].rankingSource).toBe("month-end");
+    expect(ranking[1].participantName).toBe("정매도");
+    expect(ranking[1].officialReturnPercent).toBe(18);
+    expect(ranking[1].rankingSource).toBe("sell");
+  });
+
   it("compounds finalized monthly returns for cumulative ranking", () => {
     const entries = [
       getEntryPreview({

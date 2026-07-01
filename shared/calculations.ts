@@ -67,6 +67,21 @@ export function buildMonthlyRanking(entries: EntryPreview[]): MonthlyRankingItem
         };
       }
 
+      if (
+        (entry.exitSource === "sell" || entry.exitSource === "month-end") &&
+        entry.previewReturnPercent !== null &&
+        entry.previewExitDate &&
+        entry.previewExitClose !== null
+      ) {
+        return {
+          entry,
+          rankingExitDate: entry.previewExitDate,
+          rankingExitClose: entry.previewExitClose,
+          rankingReturnPercent: entry.previewReturnPercent,
+          rankingSource: entry.exitSource
+        };
+      }
+
       if (entry.currentPrice !== null) {
         const rankingReturnPercent =
           entry.currentReturnPercent ?? calculateReturnPercent(entry.buyClose, entry.currentPrice);

@@ -38,6 +38,22 @@ function includesFindText(values: Array<string | number | null | undefined>, que
   return values.some((value) => String(value ?? "").toLocaleLowerCase("ko-KR").includes(query));
 }
 
+function getRankingSourceLabel(source: "final" | "sell" | "month-end" | "current"): string {
+  if (source === "final") {
+    return "결과 확정";
+  }
+
+  if (source === "sell") {
+    return "매도 기준";
+  }
+
+  if (source === "month-end") {
+    return "월말 기준";
+  }
+
+  return "현재가 기준";
+}
+
 export default function PublicApp() {
   const [data, setData] = useState<LeaderboardResponse | null>(null);
   const [allEntries, setAllEntries] = useState<EntryPreview[]>([]);
@@ -171,7 +187,7 @@ export default function PublicApp() {
             entry.buyDate,
             entry.rankingExitDate,
             entry.rankingExitClose,
-            entry.rankingSource === "final" ? "확정" : "현재가",
+            getRankingSourceLabel(entry.rankingSource),
             entry.rankingReturnPercent
           ],
           monthlyFindQuery
@@ -243,9 +259,9 @@ export default function PublicApp() {
     [boundedEntriesPage, filteredAllEntries]
   );
   const getDashboardReturn = (entry: EntryPreview) =>
-    entry.finalReturnPercent ?? entry.currentReturnPercent ?? entry.previewReturnPercent;
+    entry.finalReturnPercent ?? entry.previewReturnPercent ?? entry.currentReturnPercent;
   const getDashboardPrice = (entry: EntryPreview) =>
-    entry.currentPrice ?? entry.finalExitClose ?? entry.previewExitClose;
+    entry.finalExitClose ?? entry.previewExitClose ?? entry.currentPrice;
   const formatWon = (value: number | null | undefined) =>
     value === null || value === undefined ? "-" : `${formatMoney(value)}원`;
   const visibleMissingParticipants = data?.missingParticipantNames.slice(0, 4) ?? [];
@@ -365,7 +381,7 @@ export default function PublicApp() {
                 ))}
               </div>
 
-              <p className="side-note">미확정 순위는 현재가, 확정 순위는 확정일 종가 기준입니다.</p>
+              <p className="side-note">진행 중인 월은 현재가, 종료된 월은 매도/월말 종가, 확정 순위는 확정일 종가 기준입니다.</p>
             </aside>
 
             <div className="content-layer">
@@ -547,7 +563,7 @@ export default function PublicApp() {
                     </em>
                     <p>{entry.stockName}</p>
                     <small>
-                      {entry.rankingSource === "final" ? "확정" : "현재가"} {entry.rankingExitDate ?? "-"} · 매수{" "}
+                      {getRankingSourceLabel(entry.rankingSource)} {entry.rankingExitDate ?? "-"} · 매수{" "}
                       {entry.buyDate}
                     </small>
                   </article>
@@ -588,7 +604,7 @@ export default function PublicApp() {
                           {entry.rankingExitDate ?? "-"}
                           <span className="subtext">{formatMoney(entry.rankingExitClose)}</span>
                         </td>
-                        <td>{entry.rankingSource === "final" ? "결과 확정" : "현재가 기준"}</td>
+                        <td>{getRankingSourceLabel(entry.rankingSource)}</td>
                         <td className={returnClass(entry.officialReturnPercent)}>
                           {formatPercent(entry.officialReturnPercent)}
                         </td>

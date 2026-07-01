@@ -65,7 +65,7 @@ export type MonthlyRankingItem = EntryPreview & {
   rankingExitDate: string | null;
   rankingExitClose: number | null;
   rankingReturnPercent: number;
-  rankingSource: "final" | "current";
+  rankingSource: "final" | "sell" | "month-end" | "current";
 };
 
 export type CumulativeRankingItem = {

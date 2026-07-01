@@ -693,6 +693,48 @@ export async function fetchQuote(stockCode: string, fetcher: typeof fetch = fetc
   throw new Error(errors.join(" / ") || "시세 후보 심볼을 만들 수 없습니다.");
 }
 
+function getTodayInTimeZone(timeZone: string): string {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).formatToParts(new Date());
+  const year = parts.find((part) => part.type === "year")?.value;
+  const month = parts.find((part) => part.type === "month")?.value;
+  const day = parts.find((part) => part.type === "day")?.value;
+
+  if (!year || !month || !day) {
+    return new Date().toISOString().slice(0, 10);
+  }
+
+  return `${year}-${month}-${day}`;
+}
+
+function getMarketToday(stockCode: string): string {
+  return getTodayInTimeZone(isKoreanDomesticCode(stockCode) ? "Asia/Seoul" : "America/New_York");
+}
+
+async function syncMonthEndClose(env: Env, entry: EntryPreview): Promise<void> {
+  if (entry.finalizedAt || entry.sellDate || entry.endClose !== null || !entry.stockCode.trim()) {
+    return;
+  }
+
+  if (entry.monthEndDate >= getMarketToday(entry.stockCode)) {
+    return;
+  }
+
+  const close = await fetchHistoricalClose(entry.stockCode, entry.monthEndDate);
+  await env.DB.prepare(
+    `UPDATE entries
+     SET end_close = ?,
+         updated_at = CURRENT_TIMESTAMP
+     WHERE id = ?`
+  )
+    .bind(close.close, entry.id)
+    .run();
+}
+
 export async function refreshEntryQuote(env: Env, entry: EntryPreview): Promise<QuoteRefreshResult> {
   if (!entry.stockCode.trim()) {
     const message = "종목코드 없음";
@@ -727,6 +769,8 @@ export async function refreshEntryQuote(env: Env, entry: EntryPreview): Promise<
   }
 
   try {
+    await syncMonthEndClose(env, entry);
+
     const quote = await fetchQuote(entry.stockCode);
     const returnPercent = calculateReturnPercent(entry.buyClose, quote.price);
 
